@@ -2,18 +2,24 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
+import { useAuth } from "../auth/useAuth"
+import Papa from "papaparse"
 import { getMatchesByRound } from "../api/matches/query"
 import { getAdjudicatorsByTournament } from "../api/adjudicators/query"
 import { assignAdjudicators } from "../api/matches/write"
-import { createAdjudicator, deleteAdjudicator } from "../api/adjudicators/write"
+import { createAdjudicator, deleteAdjudicator, importAdjudicatorsFromCSV } from "../api/adjudicators/write"
 import { suggestAdjudicators, validateAdjudicatorInput } from "../api/adjudicators/service"
 
 const AdjudicatorAssignment = () => {
+  const { tournamentId } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const [matches, setMatches] = useState([])
   const [adjudicators, setAdjudicators] = useState([])
   const [assignments, setAssignments] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [newAdjudicator, setNewAdjudicator] = useState({
     name: "",
@@ -21,15 +27,12 @@ const AdjudicatorAssignment = () => {
     level: "experienced",
   })
 
-  const { id, round } = useParams()
-  const navigate = useNavigate()
-
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [matchesData, adjudicatorsData] = await Promise.all([
-          getMatchesByRound(id, round),
-          getAdjudicatorsByTournament(id),
+          getMatchesByRound(tournamentId, "current"),
+          getAdjudicatorsByTournament(tournamentId),
         ])
 
         setMatches(matchesData)
@@ -53,7 +56,7 @@ const AdjudicatorAssignment = () => {
     }
 
     fetchData()
-  }, [id, round])
+  }, [tournamentId])
 
   const handleAssignmentChange = (matchId, adjudicatorId, isChecked) => {
     setAssignments((prev) => {
@@ -72,7 +75,7 @@ const AdjudicatorAssignment = () => {
       await assignAdjudicators(matchId, assignments[matchId] || [])
 
       // Refresh match data
-      const matchesData = await getMatchesByRound(id, round)
+      const matchesData = await getMatchesByRound(tournamentId, "current")
       setMatches(matchesData)
     } catch (err) {
       console.error("Error saving assignments:", err)
@@ -80,65 +83,44 @@ const AdjudicatorAssignment = () => {
     }
   }
 
+  const handleAdjudicatorChange = (e) => {
+    const { name, value } = e.target
+    setNewAdjudicator((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
   const handleAddAdjudicator = async (e) => {
     e.preventDefault()
-
-    // Validate input
-    const validation = validateAdjudicatorInput(newAdjudicator)
-    if (!validation.isValid) {
-      setError(Object.values(validation.errors)[0])
+    if (!newAdjudicator.name || !newAdjudicator.email || !newAdjudicator.level) {
+      setError("All fields are required")
       return
     }
 
     try {
-      const adjudicatorData = {
+      const newAdj = await createAdjudicator({
         ...newAdjudicator,
-        tournament_id: id,
-      }
-
-      await createAdjudicator(adjudicatorData)
-
-      // Reset form
-      setNewAdjudicator({
-        name: "",
-        email: "",
-        level: "experienced",
+        tournament_id: tournamentId,
       })
-
+      setAdjudicators((prev) => [...prev, newAdj])
+      setNewAdjudicator({ name: "", email: "", level: "experienced" })
       setShowAddForm(false)
-
-      // Refresh adjudicators list
-      const adjudicatorsData = await getAdjudicatorsByTournament(id)
-      setAdjudicators(adjudicatorsData)
+      setSuccess("Adjudicator added successfully")
     } catch (err) {
+      setError("Failed to add adjudicator")
       console.error("Error adding adjudicator:", err)
-      setError(err.message || "Failed to add adjudicator")
     }
   }
 
-  const handleDeleteAdjudicator = async (adjudicatorId) => {
-    if (!window.confirm("Are you sure you want to delete this adjudicator?")) {
-      return
-    }
-
+  const handleDeleteAdjudicator = async (id) => {
     try {
-      await deleteAdjudicator(adjudicatorId)
-
-      // Refresh adjudicators list
-      const adjudicatorsData = await getAdjudicatorsByTournament(id)
-      setAdjudicators(adjudicatorsData)
-
-      // Remove from assignments
-      setAssignments((prev) => {
-        const updated = { ...prev }
-        Object.keys(updated).forEach((matchId) => {
-          updated[matchId] = updated[matchId].filter((id) => id !== adjudicatorId)
-        })
-        return updated
-      })
+      await deleteAdjudicator(id)
+      setAdjudicators((prev) => prev.filter((adj) => adj.id !== id))
+      setSuccess("Adjudicator removed successfully")
     } catch (err) {
-      console.error("Error deleting adjudicator:", err)
-      setError(err.message || "Failed to delete adjudicator")
+      setError("Failed to remove adjudicator")
+      console.error("Error removing adjudicator:", err)
     }
   }
 
@@ -152,58 +134,177 @@ const AdjudicatorAssignment = () => {
     }))
   }
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    Papa.parse(file, {
+      header: true,
+      complete: async (results) => {
+        const validAdjudicators = results.data
+          .filter((row) => row.name && row.email && row.level)
+          .map((row) => ({
+            name: row.name.trim(),
+            email: row.email.trim().toLowerCase(),
+            level: row.level.trim().toLowerCase(),
+            tournament_id: tournamentId,
+          }))
+        
+        if (validAdjudicators.length === 0) {
+          setError("No valid adjudicators found in the CSV file")
+          return
+        }
+
+        try {
+          const promises = validAdjudicators.map((adj) => createAdjudicator(adj))
+          const newAdjudicators = await Promise.all(promises)
+          setAdjudicators((prev) => [...prev, ...newAdjudicators])
+          setSuccess(`${validAdjudicators.length} adjudicators imported successfully`)
+        } catch (err) {
+          setError("Failed to import adjudicators")
+          console.error("Error importing adjudicators:", err)
+        }
+      },
+      error: (error) => {
+        setError("Error parsing CSV file: " + error.message)
+      },
+    })
+  }
+
+  const handleContinue = () => {
+    navigate(`/tournaments/${tournamentId}/teams`)
+  }
+
   if (loading) {
-    return <div className="text-center py-8">Loading data...</div>
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-2">Adjudicator Assignment</h1>
-      <p className="text-gray-600 mb-6">Round {round}</p>
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-t-lg p-6 shadow-lg">
+        <h1 className="text-3xl font-bold text-white">Manage Adjudicators</h1>
+        <p className="text-blue-100 mt-2">Add and manage adjudicators for your tournament</p>
+      </div>
 
-      {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
+      {success && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          {success}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Adjudicators List */}
-        <div className="bg-white rounded-lg shadow-md p-6">
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left side - Form */}
+        <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Adjudicators</h2>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              {showAddForm ? "Cancel" : "Add New"}
-            </button>
+            <h3 className="text-lg font-medium text-gray-700">Add Adjudicators</h3>
+            <div className="space-x-2">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="csv-upload"
+              />
+              <label
+                htmlFor="csv-upload"
+                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer group relative"
+              >
+                Import CSV
+                <div className="absolute hidden group-hover:block right-0 mt-2 w-96 bg-white p-4 rounded-lg shadow-lg border border-gray-200 z-10">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">CSV Format Requirements:</h3>
+                  <div className="text-xs text-gray-600 space-y-3">
+                    <p>Your CSV file should have the following columns:</p>
+                    <ul className="list-disc pl-2 space-y-1">
+                      <li><code className="bg-gray-100 px-1">name</code> - Adjudicator's full name</li>
+                      <li><code className="bg-gray-100 px-1">email</code> - Valid email address</li>
+                      <li><code className="bg-gray-100 px-1">level</code> - One of: novice, experienced, expert</li>
+                    </ul>
+                    <div>
+                      <p className="font-medium mb-2">Example:</p>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs border border-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 border-b text-left">name</th>
+                              <th className="px-3 py-2 border-b text-left">email</th>
+                              <th className="px-3 py-2 border-b text-left">level</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="px-3 py-2 border-b">John Doe</td>
+                              <td className="px-3 py-2 border-b">john@example.com</td>
+                              <td className="px-3 py-2 border-b">experienced</td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 border-b">Jane Smith</td>
+                              <td className="px-3 py-2 border-b">jane@example.com</td>
+                              <td className="px-3 py-2 border-b">expert</td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2">Mike Johnson</td>
+                              <td className="px-3 py-2">mike@example.com</td>
+                              <td className="px-3 py-2">novice</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                {showAddForm ? "Cancel" : "Add New"}
+              </button>
+            </div>
           </div>
 
           {showAddForm && (
-            <form onSubmit={handleAddAdjudicator} className="mb-6 p-4 bg-gray-50 rounded">
-              <div className="mb-3">
+            <form onSubmit={handleAddAdjudicator} className="space-y-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                 <input
                   type="text"
+                  name="name"
                   value={newAdjudicator.name}
-                  onChange={(e) => setNewAdjudicator({ ...newAdjudicator, name: e.target.value })}
+                  onChange={handleAdjudicatorChange}
                   className="w-full p-2 border border-gray-300 rounded"
                   required
                 />
               </div>
 
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
+                  name="email"
                   value={newAdjudicator.email}
-                  onChange={(e) => setNewAdjudicator({ ...newAdjudicator, email: e.target.value })}
+                  onChange={handleAdjudicatorChange}
                   className="w-full p-2 border border-gray-300 rounded"
+                  required
                 />
               </div>
 
-              <div className="mb-3">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Experience Level</label>
                 <select
+                  name="level"
                   value={newAdjudicator.level}
-                  onChange={(e) => setNewAdjudicator({ ...newAdjudicator, level: e.target.value })}
+                  onChange={handleAdjudicatorChange}
                   className="w-full p-2 border border-gray-300 rounded"
                 >
                   <option value="novice">Novice</option>
@@ -217,9 +318,13 @@ const AdjudicatorAssignment = () => {
               </button>
             </form>
           )}
+        </div>
 
+        {/* Right side - List */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium text-gray-700 mb-4">Added Adjudicators</h3>
           {adjudicators.length === 0 ? (
-            <p className="text-gray-500">No adjudicators available</p>
+            <p className="text-gray-500">No adjudicators added yet</p>
           ) : (
             <div className="space-y-3">
               {adjudicators.map((adjudicator) => (
@@ -235,6 +340,7 @@ const AdjudicatorAssignment = () => {
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={() => handleDeleteAdjudicator(adjudicator.id)}
                     className="text-red-600 hover:text-red-800"
                   >
@@ -244,90 +350,20 @@ const AdjudicatorAssignment = () => {
               ))}
             </div>
           )}
-
-          {adjudicators.length > 0 && (
-            <button
-              onClick={handleSuggestAdjudicators}
-              className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Auto-Assign Adjudicators
-            </button>
-          )}
         </div>
+      </div>
 
-        {/* Matches List */}
-        <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Matches</h2>
-
-          {matches.length === 0 ? (
-            <p className="text-gray-500">No matches found for this round</p>
-          ) : (
-            <div className="space-y-6">
-              {matches.map((match) => (
-                <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-medium mb-3">Match #{match.id.slice(0, 8)}</h3>
-
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    {match.match_teams &&
-                      match.match_teams.map((matchTeam) => (
-                        <div key={matchTeam.id} className="p-2 bg-gray-50 rounded">
-                          <div className="flex justify-between items-center">
-                            <span>{matchTeam.team?.name}</span>
-                            <span className="text-sm bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                              {matchTeam.role}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="text-sm font-medium mb-2">Assign Adjudicators:</h4>
-
-                    {adjudicators.length === 0 ? (
-                      <p className="text-gray-500 text-sm">No adjudicators available</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        {adjudicators.map((adjudicator) => (
-                          <label key={adjudicator.id} className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              checked={(assignments[match.id] || []).includes(adjudicator.id)}
-                              onChange={(e) => handleAssignmentChange(match.id, adjudicator.id, e.target.checked)}
-                              className="rounded text-blue-600"
-                            />
-                            <span className="text-sm">{adjudicator.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => handleSaveAssignments(match.id)}
-                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                    >
-                      Save Assignments
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={() => navigate(`/tournaments/${id}/rounds`)}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-            >
-              Back to Rounds
-            </button>
-          </div>
-        </div>
+      <div className="mt-6 flex justify-end">
+        <button
+          onClick={handleContinue}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300"
+        >
+          Continue to Teams
+        </button>
       </div>
     </div>
   )
 }
 
 export default AdjudicatorAssignment
+

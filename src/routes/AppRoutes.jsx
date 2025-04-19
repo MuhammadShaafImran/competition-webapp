@@ -134,11 +134,11 @@ const AppRoutes = () => {
       />
 
       <Route
-        path="/tournaments/:id/teams/:teamId"
+        path="/tournaments/:id/adjudicators"
         element={
           <ProtectedRoute>
             <MainLayout>
-              <TeamTracking />
+              <AdjudicatorAssignment />
             </MainLayout>
           </ProtectedRoute>
         }
