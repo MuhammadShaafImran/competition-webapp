@@ -6,6 +6,7 @@ import MainLayout from "../components/Layout/MainLayout"
 
 // Pages
 import Login from "../pages/Login"
+import Register from "../pages/Register"
 import Dashboard from "../pages/Dashboard"
 import CreateTournament from "../pages/CreateTournament"
 import RegisterTeams from "../pages/RegisterTeams"
@@ -29,6 +30,7 @@ const AppRoutes = () => {
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/team/:token" element={<TeamView />} />
 
       {/* Protected routes */}

@@ -1,46 +1,52 @@
 "use client"
 
 import React, { useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "../auth/useAuth"
 
-const Login = () => {
+const Register = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const { login, loginWithGoogle, isAuthenticated } = useAuth()
+  const { register, loginWithGoogle, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-
-  // Check for registration success message
-  React.useEffect(() => {
-    if (location.state?.message) {
-      setSuccess(location.state.message)
-    }
-  }, [location])
 
   // Redirect if already logged in
   React.useEffect(() => {
     if (isAuthenticated) {
-      const from = location.state?.from?.pathname || "/dashboard"
-      navigate(from, { replace: true })
+      navigate("/dashboard")
     }
-  }, [isAuthenticated, navigate, location])
+  }, [isAuthenticated, navigate])
 
-  const handleEmailLogin = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault()
     setError("")
-    setSuccess("")
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long")
+      return
+    }
+
     setLoading(true)
 
     try {
-      await login(email, password)
-      navigate("/dashboard")
+      await register(email, password)
+      // Show success message and redirect to login
+      navigate("/login", { 
+        state: { 
+          message: "Registration successful! Please check your email to confirm your account." 
+        }
+      })
     } catch (err) {
-      setError(err.message || "Failed to login")
+      setError(err.message || "Failed to create account")
     } finally {
       setLoading(false)
     }
@@ -48,7 +54,6 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     setError("")
-    setSuccess("")
     setLoading(true)
 
     try {
@@ -63,12 +68,15 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
-        <h1 className="text-2xl font-bold text-center mb-6">British Parliamentary Debate Tournament</h1>
+        <h1 className="text-2xl font-bold text-center mb-6">Create an Account</h1>
 
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
-        {success && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{success}</div>}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
 
-        <form onSubmit={handleEmailLogin} className="space-y-4">
+        <form onSubmit={handleRegister} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email
@@ -98,12 +106,26 @@ const Login = () => {
           </div>
 
           <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+              Confirm Password
+            </label>
+            <input
+              id="confirmPassword"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+            />
+          </div>
+
+          <div>
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "Logging in..." : "Login"}
+              {loading ? "Creating account..." : "Register"}
             </button>
           </div>
         </form>
@@ -137,9 +159,9 @@ const Login = () => {
 
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <a href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              Register here
+            Already have an account?{" "}
+            <a href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+              Login here
             </a>
           </p>
         </div>
@@ -148,4 +170,4 @@ const Login = () => {
   )
 }
 
-export default Login
+export default Register 
