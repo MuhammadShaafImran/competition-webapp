@@ -1,20 +1,22 @@
 import supabase from "../supabaseClient"
 
 export const getTeamStandings = async (tournamentId) => {
-  // Get all teams with their match results
   const { data, error } = await supabase
     .from("teams")
     .select(`
       id,
       name,
+      status,
       match_teams(
         team_points,
-        scaled_points,
         raw_points,
+        scaled_points,
         rank,
-        match:matches(
+        role,
+        matches(
           round_number,
-          is_break
+          is_break,
+          status
         )
       )
     `)
@@ -22,46 +24,23 @@ export const getTeamStandings = async (tournamentId) => {
 
   if (error) throw error
 
-  // Calculate total points and stats for each team
+  // Calculate standings
   const standings = data.map((team) => {
-    const matchResults = team.match_teams || []
-
-    // Only count completed matches (where team_points is not null)
-    const completedMatches = matchResults.filter((mr) => mr.team_points !== null)
-
-    // Calculate totals
-    const totalTeamPoints = completedMatches.reduce((sum, mr) => sum + (mr.team_points || 0), 0)
-
-    const totalSpeakerPoints = completedMatches.reduce((sum, mr) => sum + (mr.scaled_points || 0), 0)
-
-    // Count first places
-    const firstPlaces = completedMatches.filter((mr) => mr.rank === 1).length
-
-    // Count second places
-    const secondPlaces = completedMatches.filter((mr) => mr.rank === 2).length
-
+    const completedMatches = team.match_teams.filter(mt => mt.matches.status === 'completed')
+    
     return {
       id: team.id,
       name: team.name,
-      totalTeamPoints,
-      totalSpeakerPoints,
-      matchesCompleted: completedMatches.length,
-      firstPlaces,
-      secondPlaces,
-      averageRank:
-        completedMatches.length > 0
-          ? completedMatches.reduce((sum, mr) => sum + (mr.rank || 0), 0) / completedMatches.length
-          : null,
+      totalTeamPoints: completedMatches.reduce((sum, mt) => sum + (mt.team_points || 0), 0),
+      totalSpeakerPoints: completedMatches.reduce((sum, mt) => sum + (mt.scaled_points || 0), 0),
+      firstPlaces: completedMatches.filter(mt => mt.rank === 1).length,
+      secondPlaces: completedMatches.filter(mt => mt.rank === 2).length,
+      matchesCompleted: completedMatches.length
     }
   })
 
-  // Sort by team points (descending), then by speaker points
-  return standings.sort((a, b) => {
-    if (b.totalTeamPoints !== a.totalTeamPoints) {
-      return b.totalTeamPoints - a.totalTeamPoints
-    }
-    return b.totalSpeakerPoints - a.totalSpeakerPoints
-  })
+  // Sort by points
+  return standings.sort((a, b) => b.totalTeamPoints - a.totalTeamPoints)
 }
 
 export const getSpeakerStandings = async (tournamentId) => {

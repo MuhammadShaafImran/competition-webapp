@@ -5,12 +5,12 @@ export const validateTournamentInput = (data) => {
     errors.name = "Tournament name is required"
   }
 
-  if (!data.rounds || data.rounds < 1) {
-    errors.rounds = "Number of rounds must be at least 1"
+  if (!data.num_rounds || data.num_rounds < 1) {
+    errors.num_rounds = "Number of rounds must be at least 1"
   }
 
-  if (data.break_stages && !Array.isArray(data.break_stages)) {
-    errors.break_stages = "Break stages must be an array"
+  if (data.break_rounds && data.break_rounds < data.num_rounds) {
+    errors.break_rounds = "Break stages must be less than total rounds"
   }
 
   return {

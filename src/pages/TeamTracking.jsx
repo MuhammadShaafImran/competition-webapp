@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { getTeamById } from "../api/teams/query"
-import { createTeamLink } from "../api/teams/write"
+// import { createTeamLink } from "../api/teams/write"
 
 const TeamTracking = () => {
   const [team, setTeam] = useState(null)
@@ -32,7 +32,7 @@ const TeamTracking = () => {
 
   const handleGenerateLink = async () => {
     try {
-      const link = await createTeamLink(teamId, id)
+      // const link = await createTeamLink(teamId, id)
 
       // Copy link to clipboard
       const linkUrl = `${window.location.origin}/team/${link.uuid}`

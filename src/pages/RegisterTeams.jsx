@@ -1,10 +1,8 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { getTournamentById } from "../api/tournaments/query"
 import { getTeamsByTournament } from "../api/teams/query"
-import { createTeam, createTeamLink, deleteTeam } from "../api/teams/write"
+import { createTeam, deleteTeam } from "../api/teams/write"
 import { batchUploadTeams } from "../api/teams/service"
 
 const RegisterTeams = () => {
@@ -14,7 +12,11 @@ const RegisterTeams = () => {
   const [error, setError] = useState(null)
 
   const [teamName, setTeamName] = useState("")
-  const [members, setMembers] = useState([{ name: "", email: "" }])
+  const [member1Name, setMember1Name] = useState("")
+  const [member1Email, setMember1Email] = useState("")
+  const [member2Name, setMember2Name] = useState("")
+  const [member2Email, setMember2Email] = useState("")
+  const [institute, setInstitute] = useState("")
   const [csvFile, setCsvFile] = useState(null)
 
   const { id } = useParams()
@@ -39,22 +41,6 @@ const RegisterTeams = () => {
     fetchData()
   }, [id])
 
-  const handleAddMember = () => {
-    setMembers([...members, { name: "", email: "" }])
-  }
-
-  const handleMemberChange = (index, field, value) => {
-    const updatedMembers = [...members]
-    updatedMembers[index][field] = value
-    setMembers(updatedMembers)
-  }
-
-  const handleRemoveMember = (index) => {
-    const updatedMembers = [...members]
-    updatedMembers.splice(index, 1)
-    setMembers(updatedMembers)
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
 
@@ -64,21 +50,28 @@ const RegisterTeams = () => {
     }
 
     try {
-      const newTeam = await createTeam(
-        { name: teamName, tournament_id: id },
-        members.filter((m) => m.name.trim()),
-      )
-
-      // Create team link
-      await createTeamLink(newTeam.id, id)
+      await createTeam({
+        name: teamName,
+        member_1_name: member1Name,
+        member_1_email: member1Email,
+        member_2_name: member2Name,
+        member_2_email: member2Email,
+        institute: institute,
+        tournament_id: id
+      })
 
       // Reset form
       setTeamName("")
-      setMembers([{ name: "", email: "" }])
+      setMember1Name("")
+      setMember1Email("")
+      setMember2Name("")
+      setMember2Email("")
+      setInstitute("")
 
       // Refresh teams list
       const teamsData = await getTeamsByTournament(id)
       setTeams(teamsData)
+      setError(null)
     } catch (err) {
       console.error("Error creating team:", err)
       setError(err.message || "Failed to create team")
@@ -96,12 +89,10 @@ const RegisterTeams = () => {
     try {
       await batchUploadTeams(csvFile, id)
 
-      // Reset form
       setCsvFile(null)
-
-      // Refresh teams list
       const teamsData = await getTeamsByTournament(id)
       setTeams(teamsData)
+      setError(null)
     } catch (err) {
       console.error("Error uploading teams:", err)
       setError(err.message || "Failed to upload teams")
@@ -109,14 +100,10 @@ const RegisterTeams = () => {
   }
 
   const handleDeleteTeam = async (teamId) => {
-    if (!window.confirm("Are you sure you want to delete this team?")) {
-      return
-    }
+    if (!window.confirm("Are you sure you want to delete this team?")) return
 
     try {
       await deleteTeam(teamId)
-
-      // Refresh teams list
       const teamsData = await getTeamsByTournament(id)
       setTeams(teamsData)
     } catch (err) {
@@ -125,127 +112,168 @@ const RegisterTeams = () => {
     }
   }
 
-  const handleGenerateLink = async (teamId) => {
-    try {
-      const link = await createTeamLink(teamId, id)
-
-      // Copy link to clipboard
-      const linkUrl = `${window.location.origin}/team/${link.uuid}`
-      navigator.clipboard.writeText(linkUrl)
-
-      alert("Team link copied to clipboard!")
-    } catch (err) {
-      console.error("Error generating team link:", err)
-      setError(err.message || "Failed to generate team link")
-    }
+  const handleCopyLink = (token) => {
+    const url = `${window.location.origin}/team/${token}`
+    navigator.clipboard.writeText(url)
+    alert("Team link copied to clipboard!")
   }
 
-  if (loading) {
-    return <div className="text-center py-8">Loading tournament data...</div>
-  }
-
-  if (!tournament) {
-    return <div className="text-center py-8">Tournament not found</div>
-  }
+  if (loading) return (
+    <div className="flex justify-center items-center h-64">
+      <div className="animate-pulse text-blue-600 font-medium">Loading tournament data...</div>
+    </div>
+  )
+  
+  if (!tournament) return (
+    <div className="flex justify-center items-center h-64">
+      <div className="text-red-600 font-medium">Tournament not found</div>
+    </div>
+  )
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-2">{tournament.name}</h1>
-      <p className="text-gray-600 mb-6">Manage Teams</p>
+      <div className="mb-8 text-center">
+        <h1 className="text-3xl font-bold text-gray-800">{tournament.name}</h1>
+        <p className="text-gray-600 mt-2">Team Registration</p>
+      </div>
 
-      {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">
+          <p className="font-medium">Error</p>
+          <p>{error}</p>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         {/* Add Team Form */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Add Team</h2>
+        <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100">
+          <h2 className="text-xl font-bold text-gray-800 mb-6">Register New Team</h2>
 
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-1">
-                Team Name
-              </label>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-1">Team Name *</label>
               <input
                 type="text"
                 id="teamName"
                 value={teamName}
                 onChange={(e) => setTeamName(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                placeholder="Enter team name"
                 required
               />
             </div>
 
-            <h3 className="text-lg font-medium mb-2">Team Members</h3>
+            <div>
+              <label htmlFor="institute" className="block text-sm font-medium text-gray-700 mb-1">Institute</label>
+              <input
+                type="text"
+                id="institute"
+                value={institute}
+                onChange={(e) => setInstitute(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                placeholder="Enter institute name"
+              />
+            </div>
 
-            {members.map((member, index) => (
-              <div key={index} className="mb-4 p-3 border border-gray-200 rounded">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-medium">Member {index + 1}</h4>
-                  {members.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(index)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      Remove
-                    </button>
-                  )}
+            <div className="bg-gray-50 p-5 rounded-lg border border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Team Members</h3>
+              
+              {/* Member 1 */}
+              <div className="mb-5">
+                <div className="flex items-center mb-3">
+                  <div className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center mr-2">
+                    <span className="text-sm font-medium">1</span>
+                  </div>
+                  <h4 className="font-medium text-gray-700">First Member</h4>
                 </div>
-
-                <div className="mb-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <input
-                    type="text"
-                    value={member.name}
-                    onChange={(e) => handleMemberChange(index, "name", e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
-                  <input
-                    type="email"
-                    value={member.email}
-                    onChange={(e) => handleMemberChange(index, "email", e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                    <input
+                      type="text"
+                      value={member1Name}
+                      onChange={(e) => setMember1Name(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      placeholder="Enter name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={member1Email}
+                      onChange={(e) => setMember1Email(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      placeholder="Enter email"
+                    />
+                  </div>
                 </div>
               </div>
-            ))}
 
-            <button type="button" onClick={handleAddMember} className="mb-4 text-blue-600 hover:text-blue-800">
-              + Add Another Member
-            </button>
-
-            <div>
-              <button
-                type="submit"
-                className="w-full px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-              >
-                Add Team
-              </button>
+              {/* Member 2 */}
+              <div>
+                <div className="flex items-center mb-3">
+                  <div className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center mr-2">
+                    <span className="text-sm font-medium">2</span>
+                  </div>
+                  <h4 className="font-medium text-gray-700">Second Member</h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={member2Name}
+                      onChange={(e) => setMember2Name(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      placeholder="Enter name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={member2Email}
+                      onChange={(e) => setMember2Email(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      placeholder="Enter email"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition duration-200 transform hover:translate-y-[-1px]"
+            >
+              Register Team
+            </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <h2 className="text-xl font-semibold mb-4">Bulk Upload Teams</h2>
+          <div className="mt-10 pt-8 border-t border-gray-200">
+            <h2 className="text-xl font-bold text-gray-800 mb-6">Bulk Upload</h2>
 
-            <form onSubmit={handleCsvUpload}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">CSV File</label>
+            <form onSubmit={handleCsvUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">CSV File</label>
                 <input
                   type="file"
                   accept=".csv"
                   onChange={(e) => setCsvFile(e.target.files[0])}
-                  className="w-full p-2 border border-gray-300 rounded"
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 />
-                <p className="mt-1 text-sm text-gray-500">CSV format: team_name, member_name, member_email</p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Format: team_name, member_1_name, member_1_email, member_2_name, member_2_email, institute
+                </p>
               </div>
 
               <button
                 type="submit"
-                className="w-full px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition duration-200"
               >
                 Upload Teams
               </button>
@@ -253,57 +281,89 @@ const RegisterTeams = () => {
           </div>
         </div>
 
-        {/* Teams List */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Registered Teams</h2>
+        {/* Teams List - Modified for single line format */}
+        <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">Registered Teams</h2>
+            <span className="bg-blue-100 text-blue-800 text-sm font-medium py-1 px-3 rounded-full">
+              {teams.length} {teams.length === 1 ? 'Team' : 'Teams'}
+            </span>
+          </div>
 
           {teams.length === 0 ? (
-            <p className="text-gray-500">No teams registered yet</p>
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <svg className="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              </svg>
+              <p className="text-center">No teams registered yet</p>
+            </div>
           ) : (
-            <div className="space-y-4">
-              {teams.map((team) => (
-                <div key={team.id} className="p-4 border border-gray-200 rounded">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-medium">{team.name}</h3>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleGenerateLink(team.id)}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Generate Link
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTeam(team.id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">Members:</h4>
-                  <ul className="text-sm text-gray-600">
-                    {team.team_members && team.team_members.length > 0 ? (
-                      team.team_members.map((member) => (
-                        <li key={member.id} className="mb-1">
-                          {member.name} {member.email && `(${member.email})`}
-                        </li>
-                      ))
-                    ) : (
-                      <li>No members</li>
-                    )}
-                  </ul>
-                </div>
-              ))}
+            <div className="overflow-hidden border border-gray-200 rounded-lg">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Team Name
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Institute
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Members
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {teams.map((team) => (
+                    <tr key={team.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="font-medium text-gray-800">{team.name}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm text-gray-600">{team.institute || "-"}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-600">
+                          {team.member_1_name && (
+                            <span>{team.member_1_name}{team.member_1_email && ` (${team.member_1_email})`}</span>
+                          )}
+                          {team.member_1_name && team.member_2_name && <span>, </span>}
+                          {team.member_2_name && (
+                            <span>{team.member_2_name}{team.member_2_email && ` (${team.member_2_email})`}</span>
+                          )}
+                          {!team.member_1_name && !team.member_2_name && <span>No members</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right">
+                        <button
+                          onClick={() => handleDeleteTeam(team.id)}
+                          className="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-50 transition"
+                          title="Delete team"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-8 flex justify-end">
             <button
               onClick={() => navigate(`/tournaments/${id}/rounds`)}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              className="py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition duration-200 flex items-center"
             >
               Continue to Rounds
+              <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+              </svg>
             </button>
           </div>
         </div>

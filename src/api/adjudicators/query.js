@@ -3,7 +3,13 @@ import supabase from "../supabaseClient"
 export const getAdjudicatorsByTournament = async (tournamentId) => {
   const { data, error } = await supabase
     .from("adjudicators")
-    .select("*")
+    .select(`
+      id,
+      name,
+      email,
+      level,
+      tournament_id
+    `)
     .eq("tournament_id", tournamentId)
     .order("name")
 
@@ -12,7 +18,7 @@ export const getAdjudicatorsByTournament = async (tournamentId) => {
 }
 
 export const getAvailableAdjudicators = async (tournamentId, matchId) => {
-  // Get all adjudicators for this tournament
+  // Get all tournament adjudicators
   const { data: allAdjudicators, error: adjError } = await supabase
     .from("adjudicators")
     .select("*")
@@ -20,7 +26,7 @@ export const getAvailableAdjudicators = async (tournamentId, matchId) => {
 
   if (adjError) throw adjError
 
-  // Get adjudicators already assigned to this match
+  // Get already assigned adjudicators
   const { data: assignedAdjudicators, error: assignedError } = await supabase
     .from("match_adjudicators")
     .select("adjudicator_id")
@@ -28,9 +34,7 @@ export const getAvailableAdjudicators = async (tournamentId, matchId) => {
 
   if (assignedError) throw assignedError
 
-  // Filter out already assigned adjudicators
-  const assignedIds = assignedAdjudicators.map((a) => a.adjudicator_id)
-  const availableAdjudicators = allAdjudicators.filter((adj) => !assignedIds.includes(adj.id))
-
-  return availableAdjudicators
+  // Filter out assigned adjudicators
+  const assignedIds = assignedAdjudicators.map(a => a.adjudicator_id)
+  return allAdjudicators.filter(adj => !assignedIds.includes(adj.id))
 }

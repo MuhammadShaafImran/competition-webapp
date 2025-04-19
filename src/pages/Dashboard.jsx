@@ -62,9 +62,9 @@ const Dashboard = () => {
               <div className="p-6">
                 <h2 className="text-xl font-semibold mb-2">{tournament.name}</h2>
                 <div className="flex justify-between text-sm text-gray-600 mb-4">
-                  <span>Teams: {tournament.total_teams || 0}</span>
+                  <span>Teams: {tournament.num_teams || 0}</span>
                   <span>
-                    Rounds: {tournament.current_round || 0}/{tournament.rounds}
+                    Rounds: {tournament.current_round || 0}/{tournament.num_rounds}
                   </span>
                 </div>
 

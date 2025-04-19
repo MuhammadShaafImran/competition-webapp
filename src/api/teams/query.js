@@ -4,8 +4,14 @@ export const getTeamsByTournament = async (tournamentId) => {
   const { data, error } = await supabase
     .from("teams")
     .select(`
-      *,
-      team_members(*)
+      id,
+      name,
+      member_1_name,
+      member_1_email,
+      member_2_name,
+      member_2_email,
+      institute,
+      tournament_id
     `)
     .eq("tournament_id", tournamentId)
     .order("name")
@@ -14,13 +20,35 @@ export const getTeamsByTournament = async (tournamentId) => {
   return data
 }
 
+
 export const getTeamById = async (teamId) => {
   const { data, error } = await supabase
     .from("teams")
     .select(`
-      *,
-      team_members(*),
-      roles_tracker(*)
+      id,
+      name,
+      member_1_name,
+      member_1_email,
+      member_2_name,
+      member_2_email,
+      institute,
+      tournament_id,
+      match_roles (
+        role,
+        match_id,
+        match:matches (
+          id,
+          round_id,
+          is_break_round,
+          is_completed,
+          created_at
+        )
+      ),
+      speaker_points (
+        match_id,
+        member_1_points,
+        member_2_points
+      )
     `)
     .eq("id", teamId)
     .single()
@@ -29,43 +57,38 @@ export const getTeamById = async (teamId) => {
   return data
 }
 
+
 export const getTeamByToken = async (token) => {
-  // First get the team link
-  const { data: linkData, error: linkError } = await supabase
-    .from("team_links")
-    .select("team_id, tournament_id")
-    .eq("uuid", token)
-    .gt("expires_at", new Date().toISOString())
-    .single()
-
-  if (linkError) throw linkError
-
-  // Then get the team with its tournament data
-  const { data: teamData, error: teamError } = await supabase
+  const { data, error } = await supabase
     .from("teams")
     .select(`
       *,
-      team_members(*),
-      tournament:tournaments(
+      tournament:tournaments (
+        id,
         name,
-        status,
-        current_round
+        num_rounds,
+        break_rounds,
+        is_final_result_uploaded
       ),
-      match_teams(
-        team_points,
-        scaled_points,
-        raw_points,
-        rank,
+      match_roles (
         role,
-        match:matches(
-          round_number,
-          is_break
+        match_id,
+        match:matches (
+          round_id,
+          is_break_round,
+          is_completed,
+          created_at
         )
+      ),
+      speaker_points (
+        match_id,
+        member_1_points,
+        member_2_points
       )
     `)
-    .eq("id", linkData.team_id)
+    .eq("private_token", token)
     .single()
 
-  if (teamError) throw teamError
-  return teamData
+  if (error) throw error
+  return data
 }
