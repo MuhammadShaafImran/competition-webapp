@@ -1,73 +1,103 @@
 import supabase from "../supabaseClient"
-import { updateRoleTracker } from "./service"
 
-export const createMatch = async ({ tournament_id, round_number, is_break, is_closing, status, teams }) => {
-  // First create the match
+export const createMatch = async ({ 
+  tournament_id, 
+  round_id, 
+  team_1_id, 
+  team_2_id, 
+  team_3_id, 
+  team_4_id,
+  is_break_round = false
+}) => {
+  // Create the match
   const { data: match, error: matchError } = await supabase
     .from("matches")
-    .insert([
-      {
-        tournament_id,
-        round_number,
-        is_break,
-        is_closing,
-        status,
-        swing_team_used: false,
-      },
-    ])
+    .insert([{
+      tournament_id,
+      round_id,
+      team_1_id,
+      team_2_id,
+      team_3_id,
+      team_4_id,
+      is_break_round,
+      is_completed: false
+    }])
     .select()
     .single()
 
   if (matchError) throw matchError
 
-  // Then create the match_teams entries
-  const matchTeams = teams.map((team) => ({
-    match_id: match.id,
-    team_id: team.id,
-    role: team.role,
-    team_points: null,
-    scaled_points: null,
-    raw_points: null,
-    rank: null,
-  }))
-
-  const { error: teamsError } = await supabase.from("match_teams").insert(matchTeams)
-
-  if (teamsError) throw teamsError
-
-  // Update role tracker for each team
-  for (const team of teams) {
-    await updateRoleTracker(team.id, team.role)
-  }
-
   return match
 }
 
 export const submitMatchResults = async (matchId, results) => {
-  // Update each team's results in the match
-  const updates = results.map((result) => ({
-    id: result.match_team_id,
-    team_points: result.team_points,
-    scaled_points: result.scaled_points,
-    raw_points: result.raw_points,
-    rank: result.rank,
-  }))
-
-  const { error } = await supabase.from("match_teams").upsert(updates)
-
-  if (error) throw error
-
-  // Update match status
-  const { error: matchError } = await supabase.from("matches").update({ status: "completed" }).eq("id", matchId)
-
+  // Begin by getting match details
+  const { data: match, error: matchError } = await supabase
+    .from("matches")
+    .select("tournament_id")
+    .eq("id", matchId)
+    .single()
+    
   if (matchError) throw matchError
+
+  // First, clear any existing results
+  await supabase.from("match_roles").delete().eq("match_id", matchId)
+  await supabase.from("speaker_points").delete().eq("match_id", matchId)
+
+  // Insert team roles
+  const rolePromises = results.map(result => 
+    supabase.from("match_roles").insert({
+      match_id: matchId,
+      team_id: result.team_id,
+      role: result.role
+    })
+  )
+  
+  // Insert speaker points
+  const pointsPromises = results.map(result => 
+    supabase.from("speaker_points").insert({
+      match_id: matchId,
+      tournament_id: match.tournament_id,
+      team_id: result.team_id,
+      member_1_points: result.member_1_points,
+      member_2_points: result.member_2_points
+    })
+  )
+  
+  // Wait for all inserts to complete
+  await Promise.all([...rolePromises, ...pointsPromises])
+  
+  // Mark match as completed
+  const { error: updateError } = await supabase
+    .from("matches")
+    .update({ is_completed: true })
+    .eq("id", matchId)
+
+  if (updateError) throw updateError
+  
+  // Update standings for each team
+  for (const result of results) {
+    await supabase.rpc('submit_match_results', {
+      p_match_id: matchId,
+      p_team_roles: results.map(r => ({ team_id: r.team_id, role: r.role })),
+      p_speaker_points: results.map(r => ({ 
+        team_id: r.team_id, 
+        member_1_points: r.member_1_points, 
+        member_2_points: r.member_2_points 
+      })),
+      p_rank_order: results.map(r => r.team_id)
+    })
+  }
 
   return { success: true }
 }
 
 export const assignAdjudicators = async (matchId, adjudicatorIds) => {
   // First remove any existing adjudicators
-  const { error: deleteError } = await supabase.from("match_adjudicators").delete().eq("match_id", matchId)
+  const { error: deleteError } = await supabase
+    .from("match_adjudicators")
+    .delete()
+    .eq("match_id", matchId)
 
   if (deleteError) throw deleteError
 
@@ -77,7 +107,9 @@ export const assignAdjudicators = async (matchId, adjudicatorIds) => {
     adjudicator_id: id,
   }))
 
-  const { error } = await supabase.from("match_adjudicators").insert(adjudicators)
+  const { error } = await supabase
+    .from("match_adjudicators")
+    .insert(adjudicators)
 
   if (error) throw error
 

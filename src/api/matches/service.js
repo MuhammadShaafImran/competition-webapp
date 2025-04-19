@@ -1,59 +1,72 @@
 import supabase from "../supabaseClient"
 
-export const updateRoleTracker = async (teamId, role) => {
-  // Get current role counts
-  const { data, error } = await supabase.from("roles_tracker").select("*").eq("team_id", teamId).single()
-
-  if (error) {
-    // If no tracker exists, create one
-    if (error.code === "PGRST116") {
-      const newTracker = {
-        team_id: teamId,
-        og_count: role === "OG" ? 1 : 0,
-        oo_count: role === "OO" ? 1 : 0,
-        cg_count: role === "CG" ? 1 : 0,
-        co_count: role === "CO" ? 1 : 0,
-      }
-
-      const { error: insertError } = await supabase.from("roles_tracker").insert([newTracker])
-
-      if (insertError) throw insertError
-      return newTracker
+// Note: There's no roles_tracker table in the schema, so this function needs to be reimagined
+// We'll track roles through the match_roles table instead
+export const getRoleDistribution = async (teamId) => {
+  const { data, error } = await supabase
+    .from("match_roles")
+    .select("role")
+    .eq("team_id", teamId)
+  
+  if (error) throw error
+  
+  // Count occurrences of each role
+  const roleCounts = {
+    OG: 0,
+    OO: 0,
+    CG: 0,
+    CO: 0
+  }
+  
+  data.forEach(item => {
+    if (roleCounts[item.role] !== undefined) {
+      roleCounts[item.role]++
     }
-    throw error
-  }
-
-  // Update the appropriate counter
-  const updates = { ...data }
-  if (role === "OG") updates.og_count += 1
-  if (role === "OO") updates.oo_count += 1
-  if (role === "CG") updates.cg_count += 1
-  if (role === "CO") updates.co_count += 1
-
-  const { data: updated, error: updateError } = await supabase
-    .from("roles_tracker")
-    .update(updates)
-    .eq("id", data.id)
-    .select()
-    .single()
-
-  if (updateError) throw updateError
-  return updated
+  })
+  
+  return roleCounts
 }
 
-export const calculateTeamPoints = (rank) => {
-  // BP debate scoring: 1st = 3 points, 2nd = 2 points, 3rd = 1 point, 4th = 0 points
-  const pointsMap = {
-    1: 3,
-    2: 2,
-    3: 1,
-    4: 0,
-  }
-
-  return pointsMap[rank] || 0
+export const calculateTeamPoints = (role, rank) => {
+  // BP debate scoring based on role and rank
+  // This is a simplified version - you might have a more complex logic
+  if (rank === 1) return 3
+  if (rank === 2) return 2
+  if (rank === 3) return 1
+  return 0
 }
 
-export const scaleRawPoints = (rawPoints, maxPoints = 100) => {
-  // Scale raw speaker points to a percentage of max
-  return (rawPoints / maxPoints) * 100
+export const getTotalTeamPoints = async (teamId, tournamentId) => {
+  // Get all match results for this team
+  const { data, error } = await supabase.rpc('get_team_matches', { p_team_id: teamId })
+  
+  if (error) throw error
+  
+  // Sum up team points
+  const totalPoints = data.reduce((sum, match) => sum + match.team_points, 0)
+  const totalSpeakerPoints = data.reduce((sum, match) => 
+    sum + match.member_1_points + match.member_2_points, 0)
+  
+  return {
+    team_points: totalPoints,
+    speaker_points: totalSpeakerPoints
+  }
+}
+
+export const updateStandings = async (teamId, tournamentId) => {
+  const points = await getTotalTeamPoints(teamId, tournamentId)
+  
+  // Upsert to standings table
+  const { error } = await supabase
+    .from("standings")
+    .upsert({
+      team_id: teamId,
+      tournament_id: tournamentId,
+      total_team_points: points.team_points,
+      total_speaker_points: points.speaker_points
+    })
+  
+  if (error) throw error
+  
+  return points
 }
