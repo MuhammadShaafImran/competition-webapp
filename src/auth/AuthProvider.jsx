@@ -8,61 +8,111 @@ export const AuthContext = createContext()
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState(null)
 
   useEffect(() => {
     // Check for active session on mount
     const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      setUser(session?.user || null)
-      setLoading(false)
-
-      // Set up auth state listener
-      const {
-        data: { subscription },
-      } = await supabase.auth.onAuthStateChange((_event, session) => {
+      try {
+        const {
+          data: { session },
+          error
+        } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error("Session check error:", error.message)
+          setAuthError(error.message)
+        }
+        
         setUser(session?.user || null)
-      })
+        setLoading(false)
 
-      return () => subscription.unsubscribe()
+        // Set up auth state listener
+        const {
+          data: { subscription },
+        } = await supabase.auth.onAuthStateChange((_event, session) => {
+          setUser(session?.user || null)
+          setAuthError(null)
+        })
+
+        return () => subscription.unsubscribe()
+      } catch (err) {
+        console.error("Auth initialization error:", err)
+        setAuthError(err.message)
+        setLoading(false)
+      }
     }
 
     checkSession()
   }, [])
 
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      setAuthError(null)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (error) throw error
-    return data
+      if (error) {
+        setAuthError(error.message)
+        throw error
+      }
+      return data
+    } catch (err) {
+      setAuthError(err.message || "Login failed")
+      throw err
+    }
   }
 
   const loginWithGoogle = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-    })
+    try {
+      setAuthError(null)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+      })
 
-    if (error) throw error
-    return data
+      if (error) {
+        setAuthError(error.message)
+        throw error
+      }
+      return data
+    } catch (err) {
+      setAuthError(err.message || "Google login failed")
+      throw err
+    }
   }
 
   const logout = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        setAuthError(error.message)
+        throw error
+      }
+    } catch (err) {
+      setAuthError(err.message || "Logout failed")
+      throw err
+    }
   }
 
   const register = async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
+    try {
+      setAuthError(null)
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      })
 
-    if (error) throw error
-    return data
+      if (error) {
+        setAuthError(error.message)
+        throw error
+      }
+      return data
+    } catch (err) {
+      setAuthError(err.message || "Registration failed")
+      throw err
+    }
   }
 
   const value = {
@@ -73,6 +123,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     register,
     isAuthenticated: !!user,
+    authError,
+    clearAuthError: () => setAuthError(null)
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
