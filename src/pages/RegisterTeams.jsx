@@ -267,7 +267,7 @@ const RegisterTeams = () => {
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 />
                 <p className="mt-2 text-sm text-gray-500">
-                  Format: team_name, member_1_name, member_1_email, member_2_name, member_2_email, institute
+                  Format: team, institute, member1, member1-email, member2, member2-email
                 </p>
               </div>
 

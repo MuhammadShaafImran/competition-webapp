@@ -37,3 +37,14 @@ export const finalizeTournament = async (tournamentId) => {
   if (error) throw error
   return data
 }
+
+export const deleteTournament = async (tournamentId) => {
+  // Delete the tournament
+  const { error } = await supabase
+    .from("tournaments")
+    .delete()
+    .eq("id", tournamentId)
+
+  if (error) throw error
+  return { success: true }
+}
