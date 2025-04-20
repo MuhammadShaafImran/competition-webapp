@@ -1,27 +1,26 @@
 import supabase from "../supabaseClient"
 
-// Note: There's no roles_tracker table in the schema, so this function needs to be reimagined
-// We'll track roles through the match_roles table instead
 export const getRoleDistribution = async (teamId) => {
   const { data, error } = await supabase
     .from("match_roles")
-    .select("role")
+    .select("og, oo, cg, co")
     .eq("team_id", teamId)
   
   if (error) throw error
   
   // Count occurrences of each role
   const roleCounts = {
-    OG: 0,
-    OO: 0,
-    CG: 0,
-    CO: 0
+    og: 0,
+    oo: 0,
+    cg: 0,
+    co: 0
   }
   
   data.forEach(item => {
-    if (roleCounts[item.role] !== undefined) {
-      roleCounts[item.role]++
-    }
+    if (item.og) roleCounts.og++
+    if (item.oo) roleCounts.oo++
+    if (item.cg) roleCounts.cg++
+    if (item.co) roleCounts.co++
   })
   
   return roleCounts

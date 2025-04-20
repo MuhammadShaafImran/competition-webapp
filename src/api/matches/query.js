@@ -18,7 +18,14 @@ export const getMatchesByRound = async (roundId) => {
       teams2:teams!team_2_id(id, name, member_1_name, member_2_name),
       teams3:teams!team_3_id(id, name, member_1_name, member_2_name),
       teams4:teams!team_4_id(id, name, member_1_name, member_2_name),
-      match_roles(id, team_id, role),
+      match_roles!inner(
+        id,
+        team_id,
+        og,
+        oo,
+        cg,
+        co
+      ),
       match_adjudicators(
         id,
         adjudicator:adjudicators(
@@ -34,7 +41,17 @@ export const getMatchesByRound = async (roundId) => {
     .order("created_at")
 
   if (error) throw error
-  return data
+
+  // Transform the data to maintain backward compatibility
+  const transformedData = data.map(match => ({
+    ...match,
+    match_roles: match.match_roles.map(mr => ({
+      ...mr,
+      role: mr.og ? 'og' : mr.oo ? 'oo' : mr.cg ? 'cg' : 'co'
+    }))
+  }))
+
+  return transformedData
 }
 
 export const getMatchById = async (matchId) => {
@@ -56,7 +73,14 @@ export const getMatchById = async (matchId) => {
       teams2:teams!team_2_id(id, name, member_1_name, member_1_email, member_2_name, member_2_email),
       teams3:teams!team_3_id(id, name, member_1_name, member_1_email, member_2_name, member_2_email),
       teams4:teams!team_4_id(id, name, member_1_name, member_1_email, member_2_name, member_2_email),
-      match_roles(id, team_id, role),
+      match_roles!inner(
+        id,
+        team_id,
+        og,
+        oo,
+        cg,
+        co
+      ),
       match_adjudicators(
         id,
         adjudicator:adjudicators(id, name, email, role)
@@ -67,5 +91,15 @@ export const getMatchById = async (matchId) => {
     .single()
 
   if (error) throw error
-  return data
+
+  // Transform the match_roles data to maintain backward compatibility
+  const transformedData = {
+    ...data,
+    match_roles: data.match_roles.map(mr => ({
+      ...mr,
+      role: mr.og ? 'og' : mr.oo ? 'oo' : mr.cg ? 'og' : 'co'
+    }))
+  }
+
+  return transformedData
 }

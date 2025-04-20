@@ -17,6 +17,7 @@ import AdjudicatorAssignment from "../pages/AdjudicatorAssignment"
 import TeamTracking from "../pages/TeamTracking"
 import ErrorPage from "../pages/ErrorPage"
 import TeamView from "../pages/TeamView"
+import MatchDetails from "../pages/MatchDetails"
 
 const AppRoutes = () => {
   const { loading } = useAuth()
@@ -93,6 +94,17 @@ const AppRoutes = () => {
           <ProtectedRoute>
             <MainLayout>
               <SubmitResults />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/tournaments/:id/matches/:matchId"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <MatchDetails />
             </MainLayout>
           </ProtectedRoute>
         }

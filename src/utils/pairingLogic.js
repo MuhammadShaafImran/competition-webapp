@@ -28,10 +28,10 @@ const randomPairings = (teams) => {
   const pairings = []
   for (let i = 0; i < teamsToUse.length; i += 4) {
     const debate = [
-      { ...teamsToUse[i], role: "OG" },
-      { ...teamsToUse[i + 1], role: "OO" },
-      { ...teamsToUse[i + 2], role: "CG" },
-      { ...teamsToUse[i + 3], role: "CO" },
+      { ...teamsToUse[i], role: "og" },
+      { ...teamsToUse[i + 1], role: "oo" },
+      { ...teamsToUse[i + 2], role: "cg" },
+      { ...teamsToUse[i + 3], role: "co" },
     ]
     pairings.push(debate)
   }
@@ -84,10 +84,10 @@ const breakRoundPairings = (standings, teams) => {
   const pairings = []
   for (let i = 0; i < teamsToUse.length; i += 4) {
     const debate = [
-      { ...teamsToUse[i], role: "OG" },
-      { ...teamsToUse[i + 1], role: "OO" },
-      { ...teamsToUse[i + 2], role: "CG" },
-      { ...teamsToUse[i + 3], role: "CO" },
+      { ...teamsToUse[i], role: "og" },
+      { ...teamsToUse[i + 1], role: "oo" },
+      { ...teamsToUse[i + 2], role: "cg" },
+      { ...teamsToUse[i + 3], role: "co" },
     ]
     pairings.push(debate)
   }
@@ -96,13 +96,60 @@ const breakRoundPairings = (standings, teams) => {
 }
 
 const assignRolesFairly = (teams) => {
-  // This would use the roles_tracker to ensure fair distribution
-  // For simplicity, we'll just assign roles randomly here
-  const roles = ["OG", "OO", "CG", "CO"]
-  const shuffledRoles = [...roles].sort(() => Math.random() - 0.5)
+  // Assign roles based on prior assignments to ensure fair distribution
+  // Each debate has 4 positions: og, oo, cg, co
+  const rolePoints = {
+    og: 3,
+    oo: 2,
+    cg: 1,
+    co: 0
+  }
 
-  return teams.map((team, index) => ({
-    ...team,
-    role: shuffledRoles[index],
-  }))
+  const rolePreferences = teams.map(team => {
+    const priorRoles = team.match_roles || []
+    const roleCounts = {
+      og: priorRoles.filter(r => r.og === 1).length,
+      oo: priorRoles.filter(r => r.oo === 1).length,
+      cg: priorRoles.filter(r => r.cg === 1).length,
+      co: priorRoles.filter(r => r.co === 1).length
+    }
+
+    // Calculate preference score for each role (lower is better)
+    const preferences = Object.entries(rolePoints).map(([role, points]) => ({
+      role,
+      score: (roleCounts[role] * 2) - points // Balance frequency with position strength
+    }))
+
+    return {
+      team,
+      preferences: preferences.sort((a, b) => a.score - b.score)
+    }
+  })
+
+  // Sort teams by their cumulative role scores (give priority to teams with worse positions)
+  rolePreferences.sort((a, b) => {
+    const aScore = Object.values(rolePoints).reduce((sum, points, i) => 
+      sum + (a.team.match_roles?.filter(r => r[Object.keys(rolePoints)[i]] === 1).length || 0) * points, 0)
+    const bScore = Object.values(rolePoints).reduce((sum, points, i) => 
+      sum + (b.team.match_roles?.filter(r => r[Object.keys(rolePoints)[i]] === 1).length || 0) * points, 0)
+    return aScore - bScore
+  })
+
+  // Assign roles
+  const assignedRoles = new Set()
+  const assignments = rolePreferences.map(rp => {
+    // Find the best available role
+    const role = rp.preferences.find(p => !assignedRoles.has(p.role))?.role || 'CO'
+    assignedRoles.add(role)
+    
+    return {
+      ...rp.team,
+      og: role === 'og' ? 1 : 0,
+      oo: role === 'oo' ? 1 : 0,
+      cg: role === 'cg' ? 1 : 0,
+      co: role === 'co' ? 1 : 0
+    }
+  })
+
+  return assignments
 }

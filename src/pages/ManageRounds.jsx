@@ -25,24 +25,43 @@ const ManageRounds = () => {
       try {
         const tournamentData = await getTournamentById(id)
         setTournament(tournamentData)
+        // console.log("Tournament Data:", tournamentData)
+        
+        try {
+          const roundsData = await getRoundsByTournament(id)
+          setRounds(roundsData)
+          console.log("Rounds Data:", roundsData)
 
-        const roundsData = await getRoundsByTournament(id)
-        setRounds(roundsData)
+          try {
+            const currentRoundData = await getCurrentRound(id)
+            setCurrentRound(currentRoundData)
+            console.log("Current Round Data:", currentRoundData)
 
-        const currentRoundData = await getCurrentRound(id)
-        setCurrentRound(currentRoundData)
+            if (roundsData.length > 0) {
+              const roundToSelect = currentRoundData || roundsData[0].number
+              setSelectedRound(roundToSelect)
+              console.log("round to select: ", roundToSelect)
 
-        // If there are rounds, select the current one
-        if (roundsData.length > 0) {
-          const roundToSelect = currentRoundData || roundsData[roundsData.length - 1].round_number
-          setSelectedRound(roundToSelect)
-
-          // Fetch matches for the selected round
-          const matchesData = await getMatchesByRound(id, roundToSelect)
-          setMatches(matchesData)
+              try {
+                // const matchesData = await getMatchesByRound(roundsData[0].id)
+                
+                setMatches(roundsData[roundToSelect].matches)
+                console.log("Matches Data:", roundsData[roundToSelect].matches)
+              
+              } catch (err) {
+                setError("Failed to load match data")
+              }
+            }
+          } catch (err) {
+            console.error("Error fetching current round:", err)
+            setError("Failed to load current round")
+          }
+        } catch (err) {
+          console.error("Error fetching rounds:", err)
+          setError("Failed to load rounds data")
         }
       } catch (err) {
-        console.error("Error fetching data:", err)
+        console.error("Error fetching tournament:", err)
         setError("Failed to load tournament data")
       } finally {
         setLoading(false)
@@ -54,44 +73,41 @@ const ManageRounds = () => {
 
   const handleCreateRound = async () => {
     try {
-      const nextRound = currentRound + 1
+      const nextRoundNumber = currentRound + 1
 
-      // Check if we've reached the maximum number of rounds
-      if (nextRound > tournament.rounds) {
+      if (nextRoundNumber > tournament.num_rounds) {
         setError("Maximum number of rounds reached")
         return
       }
 
-      // Create the round
-      await createRound(id, nextRound)
+      const newRound = await createRound(id, nextRoundNumber)
 
-      // Generate matches for the round
-      await generateRound(id, nextRound)
+      await generateRound(id, nextRoundNumber, newRound.id)
 
-      // Refresh data
-      const roundsData = await getRoundsByTournament(id)
+      const roundsData = await getRoundsByTournament(tournament.id)
       setRounds(roundsData)
 
       const currentRoundData = await getCurrentRound(id)
       setCurrentRound(currentRoundData)
+      console.log("Current round data : ",currentRoundData)
 
-      setSelectedRound(nextRound)
+      setSelectedRound(newRound.id)
 
-      // Fetch matches for the new round
-      const matchesData = await getMatchesByRound(id, nextRound)
-      setMatches(matchesData)
+      // const matchesData = await getMatchesByRound(newRound.id)
+
+      // setMatches(matchesData)
     } catch (err) {
       console.error("Error creating round:", err)
       setError(err.message || "Failed to create round")
     }
   }
 
-  const handleSelectRound = async (roundNumber) => {
-    setSelectedRound(roundNumber)
+  const handleSelectRound = async (roundId) => {
+    setSelectedRound(roundId)
 
     try {
-      const matchesData = await getMatchesByRound(id, roundNumber)
-      setMatches(matchesData)
+      // const matchesData = await getMatchesByRound(roundId)
+      // setMatches(matchesData)
     } catch (err) {
       console.error("Error fetching matches:", err)
       setError("Failed to load matches")
@@ -120,7 +136,7 @@ const ManageRounds = () => {
             <h2 className="text-xl font-semibold">Rounds</h2>
             <button
               onClick={handleCreateRound}
-              disabled={currentRound >= tournament.rounds}
+              disabled={currentRound >= tournament.num_rounds}
               className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
               Create Next Round
@@ -133,133 +149,79 @@ const ManageRounds = () => {
             <div className="space-y-2">
               {rounds.map((round) => (
                 <button
-                  key={round.round_number}
-                  onClick={() => handleSelectRound(round.round_number)}
+                  key={round.id}
+                  onClick={() => handleSelectRound(round.id)}
                   className={`w-full text-left p-3 rounded ${
-                    selectedRound === round.round_number
+                    selectedRound === round.id
                       ? "bg-blue-100 border border-blue-300"
                       : "bg-gray-100 hover:bg-gray-200"
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="font-medium">Round {round.round_number}</span>
+                    <span className="font-medium">Round {round.number}</span>
                     <span
                       className={`text-xs px-2 py-1 rounded ${
-                        round.status === "completed" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                        false ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
                       }`}
                     >
-                      {round.status === "completed" ? "Completed" : "In Progress"}
+                      {round.is_completed ? "Completed" : "In Progress"}
                     </span>
                   </div>
-                  <div className="text-sm text-gray-600">{round.is_break ? "Break Round" : "Preliminary Round"}</div>
+                  <div className="text-sm text-gray-600">{round.is_break_round ? "Break Round" : "Preliminary Round"}</div>
                 </button>
               ))}
             </div>
           )}
-
           <div className="mt-6 pt-4 border-t border-gray-200">
             <p className="text-sm text-gray-600">
-              Current Round: {currentRound || "None"} / {tournament.rounds}
+              Current Round: {currentRound || "None"} / {tournament.num_rounds}
             </p>
-            <p className="text-sm text-gray-600">Teams: {tournament.total_teams || 0}</p>
           </div>
         </div>
 
         {/* Matches for Selected Round */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
           <h2 className="text-xl font-semibold mb-4">
-            {selectedRound ? `Round ${selectedRound} Matches` : "Select a Round"}
+            {selectedRound ? `Round ${rounds.find(round => round.id === selectedRound)?.number} Matches` : "Select a Round"}
           </h2>
 
           {selectedRound ? (
             matches.length > 0 ? (
               <div className="space-y-6">
-                {matches.map((match) => (
+                {matches.map((match, count) => (
                   <div key={match.id} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-3">
-                      <h3 className="font-medium">Match #{match.id.slice(0, 8)}</h3>
+                      <h3 className="font-medium">Match #{count+1}</h3>
                       <span
                         className={`text-xs px-2 py-1 rounded ${
-                          match.status === "completed" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                          match.is_completed ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
-                        {match.status === "completed" ? "Completed" : "Pending"}
+                        {match.is_completed ? "Completed" : "Pending"}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-4">
-                      {match.match_teams &&
-                        match.match_teams.map((matchTeam) => (
-                          <div key={matchTeam.id} className="p-2 bg-gray-50 rounded">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="font-medium">{matchTeam.team?.name}</span>
-                              <span className="text-sm bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                                {matchTeam.role}
-                              </span>
-                            </div>
-
-                            {matchTeam.rank && (
-                              <div className="text-sm">
-                                <span className="text-gray-600">Rank:</span> {matchTeam.rank}
-                                {matchTeam.team_points !== null && (
-                                  <span className="ml-2">({matchTeam.team_points} points)</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-
-                    <div className="flex justify-between items-center">
                       <div>
-                        <h4 className="text-sm font-medium mb-1">Adjudicators:</h4>
-                        {match.match_adjudicators && match.match_adjudicators.length > 0 ? (
-                          <ul className="text-sm text-gray-600">
-                            {match.match_adjudicators.map((ma) => (
-                              <li key={ma.id}>{ma.adjudicator?.name}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-gray-500">No adjudicators assigned</p>
-                        )}
-                      </div>
-
-                      <div className="flex space-x-2">
-                        <Link
-                          to={`/tournaments/${id}/rounds/${selectedRound}/matches/${match.id}/results`}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          {match.status === "completed" ? "View Results" : "Enter Results"}
-                        </Link>
-
-                        {match.status !== "completed" && (
-                          <Link
-                            to={`/tournaments/${id}/rounds/${selectedRound}/adjudicators`}
-                            className="text-blue-600 hover:text-blue-800 text-sm"
-                          >
-                            Assign Adjudicators
-                          </Link>
-                        )}
+                        <p>Team 1: {match.teams1?.name}</p>
+                        <p>Team 2: {match.teams2?.name}</p>
+                        <p>Team 3: {match.teams3?.name}</p>
+                        <p>Team 4: {match.teams4?.name}</p>
                       </div>
                     </div>
+
+                    <Link to={`/tournaments/${id}/matches/${match.id}`} className="text-blue-600 hover:underline">
+                      View Match Details
+                    </Link>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500">No matches found for this round</p>
+              <p className="text-gray-500">No matches found for this round.</p>
             )
           ) : (
-            <p className="text-gray-500">Select a round to view matches</p>
+            <p className="text-gray-500">Select a round to view matches.</p>
           )}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={() => navigate(`/tournaments/${id}/statistics`)}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-            >
-              View Tournament Statistics
-            </button>
-          </div>
         </div>
       </div>
     </div>

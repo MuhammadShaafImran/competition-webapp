@@ -3,39 +3,30 @@ import { createMatch } from "../matches/write"
 import { generatePairings } from "../../utils/pairingLogic"
 import supabase from "../supabaseClient"
 
-export const generateRound = async (tournamentId, roundNumber, isBreak = false) => {
+export const generateRound = async (tournamentId, roundNumber, round_id,isBreak = false) => {
   // Create round record first
-  const { data: round, error: roundError } = await supabase
-    .from("rounds")
-    .insert([{
-      number: roundNumber,
-      is_break_round: isBreak,
-      tournament_id: tournamentId,
-      is_closing_round: false
-    }])
-    .select()
-    .single()
-
-  if (roundError) throw roundError
-
   const teams = await getTeamsByTournament(tournamentId)
   const pairings = await generatePairings(teams, tournamentId, roundNumber, isBreak)
 
-  const matches = []
+  console.log("Teams:", teams)
+  console.log("Pairings:", pairings)
+
+  const matches_record = []
   for (const pairing of pairings) {
-    const match = await createMatch({
-      tournament_id: tournamentId,
-      round_id: round.id,
-      team_1_id: pairing[0],
-      team_2_id: pairing[1],
-      team_3_id: pairing[2],
-      team_4_id: pairing[3],
-      is_break_round: isBreak
-    })
-    matches.push(match)
+      const current_match = await createMatch({
+        round_id: round_id,
+        tournament_id: tournamentId,
+        team_1_id: pairing[0]['id'],
+        team_2_id: pairing[1]['id'],
+        team_3_id: pairing[2]['id'],
+        team_4_id: pairing[3]['id'],
+        is_break_round: isBreak
+      })
+
+    matches_record.push(current_match)
   }
 
-  return matches
+  return matches_record
 }
 
 export const shouldCreateBreakRound = async (tournamentId) => {

@@ -1,8 +1,8 @@
 import supabase from "../supabaseClient"
 
 export const createMatch = async ({ 
-  tournament_id, 
   round_id, 
+  tournament_id, 
   team_1_id, 
   team_2_id, 
   team_3_id, 
@@ -13,25 +13,26 @@ export const createMatch = async ({
   const { data: match, error: matchError } = await supabase
     .from("matches")
     .insert([{
-      tournament_id,
       round_id,
+      tournament_id,
       team_1_id,
       team_2_id,
       team_3_id,
       team_4_id,
+      is_completed: false,
       is_break_round,
-      is_completed: false
     }])
     .select()
     .single()
 
+  
   if (matchError) throw matchError
+  console.log("Match created:", match)
 
   return match
 }
 
 export const submitMatchResults = async (matchId, results) => {
-  // Begin by getting match details
   const { data: match, error: matchError } = await supabase
     .from("matches")
     .select("tournament_id")
@@ -44,14 +45,18 @@ export const submitMatchResults = async (matchId, results) => {
   await supabase.from("match_roles").delete().eq("match_id", matchId)
   await supabase.from("speaker_points").delete().eq("match_id", matchId)
 
-  // Insert team roles
-  const rolePromises = results.map(result => 
-    supabase.from("match_roles").insert({
+  // Convert roles to new format
+  const rolePromises = results.map(result => {
+    const roleData = {
       match_id: matchId,
       team_id: result.team_id,
-      role: result.role
-    })
-  )
+      og: result.role === 'og' ? 1 : 0,
+      oo: result.role === 'oo' ? 1 : 0,
+      cg: result.role === 'cg' ? 1 : 0,
+      co: result.role === 'co' ? 1 : 0
+    }
+    return supabase.from("match_roles").insert(roleData)
+  })
   
   // Insert speaker points
   const pointsPromises = results.map(result => 
@@ -79,7 +84,13 @@ export const submitMatchResults = async (matchId, results) => {
   for (const result of results) {
     await supabase.rpc('submit_match_results', {
       p_match_id: matchId,
-      p_team_roles: results.map(r => ({ team_id: r.team_id, role: r.role })),
+      p_team_roles: results.map(r => ({ 
+        team_id: r.team_id, 
+        og: r.role === 'og' ? 1 : 0,
+        oo: r.role === 'oo' ? 1 : 0,
+        cg: r.role === 'cg' ? 1 : 0,
+        co: r.role === 'co' ? 1 : 0
+      })),
       p_speaker_points: results.map(r => ({ 
         team_id: r.team_id, 
         member_1_points: r.member_1_points, 

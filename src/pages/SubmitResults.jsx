@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { getMatchById } from "../api/matches/query"
 import { submitMatchResults } from "../api/matches/write"
-import { calculateTeamPoints, scaleRawPoints } from "../api/matches/service"
+import { calculateTeamPoints } from "../api/matches/service"
 
 const SubmitResults = () => {
   const [match, setMatch] = useState(null)
@@ -23,16 +23,21 @@ const SubmitResults = () => {
         setMatch(matchData)
 
         // Initialize results from match data
-        if (matchData.match_teams) {
-          const initialResults = matchData.match_teams.map((mt) => ({
-            match_team_id: mt.id,
-            team_id: mt.team_id,
-            team_name: mt.team?.name,
-            role: mt.role,
-            rank: mt.rank || null,
-            raw_points: mt.raw_points || null,
-            scaled_points: mt.scaled_points || null,
-            team_points: mt.team_points || null,
+        if (matchData.match_roles) {
+          const initialResults = matchData.match_roles.map((mr) => ({
+            match_team_id: mr.id,
+            team_id: mr.team_id,
+            team_name: matchData.teams1?.id === mr.team_id ? matchData.teams1?.name :
+                      matchData.teams2?.id === mr.team_id ? matchData.teams2?.name :
+                      matchData.teams3?.id === mr.team_id ? matchData.teams3?.name :
+                      matchData.teams4?.name,
+            role: mr.og ? 'og' : mr.oo ? 'oo' : mr.cg ? 'cg' : 'co',
+            rank: matchData.ranks?.find(r => r.team_id === mr.team_id)?.rank || null,
+            raw_points: null,
+            scaled_points: null,
+            team_points: null,
+            member_1_points: matchData.speaker_points?.find(sp => sp.team_id === mr.team_id)?.member_1_points || null,
+            member_2_points: matchData.speaker_points?.find(sp => sp.team_id === mr.team_id)?.member_2_points || null
           }))
 
           setResults(initialResults)
@@ -51,7 +56,7 @@ const SubmitResults = () => {
   const handleRankChange = (teamId, rank) => {
     const updatedResults = results.map((result) => {
       if (result.team_id === teamId) {
-        const teamPoints = calculateTeamPoints(rank)
+        const teamPoints = calculateTeamPoints(result.role, rank)
         return { ...result, rank, team_points: teamPoints }
       }
       return result
@@ -61,7 +66,6 @@ const SubmitResults = () => {
   }
 
   const handlePointsChange = (teamId, rawPoints) => {
-    // Update this team's raw points
     const updatedResults = results.map((result) => {
       if (result.team_id === teamId) {
         return { ...result, raw_points: rawPoints }
@@ -69,14 +73,7 @@ const SubmitResults = () => {
       return result
     })
 
-    // Calculate scaled points for all teams
-    const resultsWithScaledPoints = updatedResults.map((result) => {
-      const scaled = result.raw_points !== null ? scaleRawPoints(result.raw_points) : null
-
-      return { ...result, scaled_points: scaled }
-    })
-
-    setResults(resultsWithScaledPoints)
+    setResults(updatedResults)
   }
 
   const handleSubmit = async (e) => {
@@ -94,7 +91,16 @@ const SubmitResults = () => {
     setSubmitting(true)
 
     try {
-      await submitMatchResults(matchId, results)
+      // Transform results to match the new match_roles structure
+      const transformedResults = results.map(result => ({
+        ...result,
+        og: result.role === 'og' ? 1 : 0,
+        oo: result.role === 'oo' ? 1 : 0,
+        cg: result.role === 'cg' ? 1 : 0,
+        co: result.role === 'co' ? 1 : 0
+      }))
+
+      await submitMatchResults(matchId, transformedResults)
       navigate(`/tournaments/${id}/rounds`)
     } catch (err) {
       console.error("Error submitting results:", err)
