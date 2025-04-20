@@ -21,27 +21,26 @@ export const deleteAdjudicator = async (id) => {
   return { success: true }
 }
 
-export const importAdjudicatorsFromCSV = async (tournamentId, adjudicatorsData) => {
-  // Filter out empty rows and validate data
-  const validAdjudicators = adjudicatorsData
-    .filter((row) => row.name && row.email && row.level)
-    .map((row) => ({
-      name: row.name.trim(),
-      email: row.email.trim().toLowerCase(),
-      level: row.level.trim().toLowerCase(),
-      tournament_id: tournamentId,
-    }))
+export const assignAdjudicatorsToMatch = async (matchId, adjudicatorIds) => {
+  // First, delete any existing assignments for this match
+  const { error: deleteError } = await supabase
+    .from("match_adjudicators")
+    .delete()
+    .eq("match_id", matchId)
 
-  if (validAdjudicators.length === 0) {
-    throw new Error("No valid adjudicators found in the CSV file")
-  }
+  if (deleteError) throw deleteError
 
-  // Insert all valid adjudicators
-  const { data, error } = await supabase
-    .from("adjudicators")
-    .insert(validAdjudicators)
-    .select()
+  // Then insert the new assignments
+  const assignments = adjudicatorIds.map(adjudicatorId => ({
+    match_id: matchId,
+    adjudicator_id: adjudicatorId
+  }))
 
-  if (error) throw error
-  return data
+  const { error: insertError } = await supabase
+    .from("match_adjudicators")
+    .insert(assignments)
+
+  if (insertError) throw insertError
+  return { success: true }
 }
+

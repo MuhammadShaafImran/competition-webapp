@@ -25,9 +25,29 @@ export const createMatch = async ({
     .select()
     .single()
 
-  
   if (matchError) throw matchError
   console.log("Match created:", match)
+
+  // Assign roles to teams
+  const roleAssignments = [
+    { team_id: team_1_id, og: 1, oo: 0, cg: 0, co: 0 }, // Team 1 is OG
+    { team_id: team_2_id, og: 0, oo: 1, cg: 0, co: 0 }, // Team 2 is OO
+    { team_id: team_3_id, og: 0, oo: 0, cg: 1, co: 0 }, // Team 3 is CG
+    { team_id: team_4_id, og: 0, oo: 0, cg: 0, co: 1 }  // Team 4 is CO
+  ]
+
+  // Insert role assignments
+  const { error: roleError } = await supabase
+    .from("match_roles")
+    .insert(roleAssignments.map(role => ({
+      ...role,
+      match_id: match.id
+    })))
+
+  if (roleError) {
+    console.error("Error assigning roles:", roleError)
+    throw roleError
+  }
 
   return match
 }

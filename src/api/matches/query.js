@@ -103,3 +103,58 @@ export const getMatchById = async (matchId) => {
 
   return transformedData
 }
+
+export const getMatchesByTournament = async (tournamentId, roundStatus = "current") => {
+  const { data, error } = await supabase
+    .from("matches")
+    .select(`
+      id,
+      round_id,
+      tournament_id,
+      team_1_id,
+      team_2_id,
+      team_3_id,
+      team_4_id,
+      is_completed,
+      is_break_round,
+      created_at,
+      teams1:teams!team_1_id(id, name, member_1_name, member_2_name),
+      teams2:teams!team_2_id(id, name, member_1_name, member_2_name),
+      teams3:teams!team_3_id(id, name, member_1_name, member_2_name),
+      teams4:teams!team_4_id(id, name, member_1_name, member_2_name),
+      match_roles!inner(
+        id,
+        team_id,
+        og,
+        oo,
+        cg,
+        co
+      ),
+      match_adjudicators(
+        id,
+        adjudicator:adjudicators(
+          id,
+          name,
+          email,
+          role
+        )
+      ),
+      speaker_points(id, team_id, member_1_points, member_2_points),
+      rounds!inner(number, is_break_round, is_closing_round)
+    `)
+    .eq("tournament_id", tournamentId)
+    .order("created_at")
+
+  if (error) throw error
+
+  // Transform the data to maintain backward compatibility
+  const transformedData = data.map(match => ({
+    ...match,
+    match_roles: match.match_roles.map(mr => ({
+      ...mr,
+      role: mr.og ? 'og' : mr.oo ? 'oo' : mr.cg ? 'cg' : 'co'
+    }))
+  }))
+
+  return transformedData
+}
