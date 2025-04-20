@@ -1,22 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../auth/useAuth"
-import Papa from "papaparse"
-import { getMatchesByRound } from "../api/matches/query"
 import { getAdjudicatorsByTournament } from "../api/adjudicators/query"
-import { assignAdjudicators } from "../api/matches/write"
-import { createAdjudicator, deleteAdjudicator, importAdjudicatorsFromCSV } from "../api/adjudicators/write"
-import { suggestAdjudicators, validateAdjudicatorInput } from "../api/adjudicators/service"
+import { createAdjudicator, deleteAdjudicator} from "../api/adjudicators/write"
+import { importAdjudicatorsFromCSV} from "../api/adjudicators/service"
 
 const AdjudicatorAssignment = () => {
-  const { tournamentId } = useParams()
+  const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
-  const [matches, setMatches] = useState([])
   const [adjudicators, setAdjudicators] = useState([])
-  const [assignments, setAssignments] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
@@ -24,29 +20,19 @@ const AdjudicatorAssignment = () => {
   const [newAdjudicator, setNewAdjudicator] = useState({
     name: "",
     email: "",
-    level: "experienced",
+    role: "experienced",
   })
+  
+  // Check if this is a new tournament from state
+  const isNewTournament = location.state?.isNewTournament;
+  const warningMessage = location.state?.message;
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [matchesData, adjudicatorsData] = await Promise.all([
-          getMatchesByRound(tournamentId, "current"),
-          getAdjudicatorsByTournament(tournamentId),
-        ])
-
-        setMatches(matchesData)
+        console.log("Fetching adjudicators for tournament: ", id)
+        const adjudicatorsData = await getAdjudicatorsByTournament(id)
         setAdjudicators(adjudicatorsData)
-
-        // Initialize assignments from existing data
-        const initialAssignments = {}
-        matchesData.forEach((match) => {
-          initialAssignments[match.id] = match.match_adjudicators
-            ? match.match_adjudicators.map((ma) => ma.adjudicator.id)
-            : []
-        })
-
-        setAssignments(initialAssignments)
       } catch (err) {
         console.error("Error fetching data:", err)
         setError("Failed to load data")
@@ -56,32 +42,7 @@ const AdjudicatorAssignment = () => {
     }
 
     fetchData()
-  }, [tournamentId])
-
-  const handleAssignmentChange = (matchId, adjudicatorId, isChecked) => {
-    setAssignments((prev) => {
-      const current = prev[matchId] || []
-
-      if (isChecked) {
-        return { ...prev, [matchId]: [...current, adjudicatorId] }
-      } else {
-        return { ...prev, [matchId]: current.filter((id) => id !== adjudicatorId) }
-      }
-    })
-  }
-
-  const handleSaveAssignments = async (matchId) => {
-    try {
-      await assignAdjudicators(matchId, assignments[matchId] || [])
-
-      // Refresh match data
-      const matchesData = await getMatchesByRound(tournamentId, "current")
-      setMatches(matchesData)
-    } catch (err) {
-      console.error("Error saving assignments:", err)
-      setError(err.message || "Failed to save assignments")
-    }
-  }
+  }, [id])
 
   const handleAdjudicatorChange = (e) => {
     const { name, value } = e.target
@@ -93,7 +54,7 @@ const AdjudicatorAssignment = () => {
 
   const handleAddAdjudicator = async (e) => {
     e.preventDefault()
-    if (!newAdjudicator.name || !newAdjudicator.email || !newAdjudicator.level) {
+    if (!newAdjudicator.name || !newAdjudicator.email || !newAdjudicator.role) {
       setError("All fields are required")
       return
     }
@@ -101,10 +62,13 @@ const AdjudicatorAssignment = () => {
     try {
       const newAdj = await createAdjudicator({
         ...newAdjudicator,
-        tournament_id: tournamentId,
+        tournament_id: id,
       })
+
+      console.log("Adding adjudicator: ", newAdj)
+
       setAdjudicators((prev) => [...prev, newAdj])
-      setNewAdjudicator({ name: "", email: "", level: "experienced" })
+      setNewAdjudicator({ name: "", email: "", role: "experienced" })
       setShowAddForm(false)
       setSuccess("Adjudicator added successfully")
     } catch (err) {
@@ -124,55 +88,26 @@ const AdjudicatorAssignment = () => {
     }
   }
 
-  const handleSuggestAdjudicators = () => {
-    // Simple suggestion algorithm
-    const suggestions = suggestAdjudicators(matches, adjudicators)
-
-    setAssignments((prev) => ({
-      ...prev,
-      ...suggestions,
-    }))
-  }
-
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
 
-    Papa.parse(file, {
-      header: true,
-      complete: async (results) => {
-        const validAdjudicators = results.data
-          .filter((row) => row.name && row.email && row.level)
-          .map((row) => ({
-            name: row.name.trim(),
-            email: row.email.trim().toLowerCase(),
-            level: row.level.trim().toLowerCase(),
-            tournament_id: tournamentId,
-          }))
-        
-        if (validAdjudicators.length === 0) {
-          setError("No valid adjudicators found in the CSV file")
-          return
-        }
-
-        try {
-          const promises = validAdjudicators.map((adj) => createAdjudicator(adj))
-          const newAdjudicators = await Promise.all(promises)
-          setAdjudicators((prev) => [...prev, ...newAdjudicators])
-          setSuccess(`${validAdjudicators.length} adjudicators imported successfully`)
-        } catch (err) {
-          setError("Failed to import adjudicators")
-          console.error("Error importing adjudicators:", err)
-        }
-      },
-      error: (error) => {
-        setError("Error parsing CSV file: " + error.message)
-      },
-    })
+    try {
+      const newAdjudicators = await importAdjudicatorsFromCSV(file, id)
+      setAdjudicators((prev) => [...prev, ...newAdjudicators])
+      setSuccess(`${newAdjudicators.length} adjudicators imported successfully`)
+    } catch (err) {
+      setError(err.message || "Failed to import adjudicators")
+      console.error("Error importing adjudicators:", err)
+    }
   }
 
   const handleContinue = () => {
-    navigate(`/tournaments/${tournamentId}/teams`)
+    if (adjudicators.length === 0) {
+      setError("You must add at least one adjudicator before proceeding to add teams");
+      return;
+    }
+    navigate(`/tournaments/${id}/teams`);
   }
 
   if (loading) {
@@ -189,6 +124,21 @@ const AdjudicatorAssignment = () => {
         <h1 className="text-3xl font-bold text-white">Manage Adjudicators</h1>
         <p className="text-blue-100 mt-2">Add and manage adjudicators for your tournament</p>
       </div>
+
+      {isNewTournament && warningMessage && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm">{warningMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {success && (
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
@@ -227,7 +177,7 @@ const AdjudicatorAssignment = () => {
                     <ul className="list-disc pl-2 space-y-1">
                       <li><code className="bg-gray-100 px-1">name</code> - Adjudicator's full name</li>
                       <li><code className="bg-gray-100 px-1">email</code> - Valid email address</li>
-                      <li><code className="bg-gray-100 px-1">level</code> - One of: novice, experienced, expert</li>
+                      <li><code className="bg-gray-100 px-1">role</code> - One of: novice, experienced, expert</li>
                     </ul>
                     <div>
                       <p className="font-medium mb-2">Example:</p>
@@ -237,7 +187,7 @@ const AdjudicatorAssignment = () => {
                             <tr>
                               <th className="px-3 py-2 border-b text-left">name</th>
                               <th className="px-3 py-2 border-b text-left">email</th>
-                              <th className="px-3 py-2 border-b text-left">level</th>
+                              <th className="px-3 py-2 border-b text-left">role</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -302,8 +252,8 @@ const AdjudicatorAssignment = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Experience Level</label>
                 <select
-                  name="level"
-                  value={newAdjudicator.level}
+                  name="role"
+                  value={newAdjudicator.role}
                   onChange={handleAdjudicatorChange}
                   className="w-full p-2 border border-gray-300 rounded"
                 >
@@ -336,7 +286,7 @@ const AdjudicatorAssignment = () => {
                     <h3 className="font-medium">{adjudicator.name}</h3>
                     <div className="text-sm text-gray-600">
                       {adjudicator.email && <p>{adjudicator.email}</p>}
-                      <p className="capitalize">{adjudicator.level}</p>
+                      <p className="capitalize">{adjudicator.role}</p>
                     </div>
                   </div>
                   <button
@@ -353,12 +303,14 @@ const AdjudicatorAssignment = () => {
         </div>
       </div>
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-8 flex justify-end">
         <button
           onClick={handleContinue}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300"
+          className={`px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 ${
+            adjudicators.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
         >
-          Continue to Teams
+          Continue to Add Teams
         </button>
       </div>
     </div>

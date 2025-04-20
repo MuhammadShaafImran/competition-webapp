@@ -1,42 +1,43 @@
-import supabase from "../supabaseClient"
+import supabase from "../supabaseClient";
 
 export const getRoundsByTournament = async (tournamentId) => {
-  // Get all matches grouped by round
+  // This matches the first query I provided, which is more typical
   const { data, error } = await supabase
-    .from("matches")
-    .select(`
-      id,
-      round_number,
-      is_break,
-      is_closing,
-      status,
-      created_at
-    `)
+    .from("rounds")
+    .select(
+      ` id,
+        number,
+        is_break_round,
+        is_closing_round,
+        created_at,
+        matches!inner(id, tournament_id, is_completed, created_at)
+      `
+    )
     .eq("tournament_id", tournamentId)
-    .order("round_number", { ascending: true })
+    .order("number", { ascending: true });
 
-  if (error) throw error
+  if (error) throw error;
 
-  // Group matches by round
-  const rounds = {}
-  data.forEach((match) => {
-    if (!rounds[match.round_number]) {
-      rounds[match.round_number] = {
-        round_number: match.round_number,
-        is_break: match.is_break,
-        matches: [],
-        status: match.status,
-      }
-    }
-    rounds[match.round_number].matches.push(match)
-  })
+  console.log("get Rounds by tournament:", data);
 
-  return Object.values(rounds)
-}
+  return data.map((round) => ({
+    ...round,
+    // matches: round.matches,
+    status: round.matches.some((m) => !m.is_completed)
+      ? "pending"
+      : "completed",
+  }));
+};
 
 export const getCurrentRound = async (tournamentId) => {
-  const { data, error } = await supabase.from("tournaments").select("current_round").eq("id", tournamentId).single()
+  const { data, error } = await supabase
+    .from("rounds")
+    .select("number")
+    .eq("tournament_id", tournamentId)
+    .order("number", { ascending: false })
+    .limit(1)
+    .single();
 
-  if (error) throw error
-  return data.current_round
-}
+  if (error) return 0; // No rounds created yet
+  return data?.number || 0;
+};

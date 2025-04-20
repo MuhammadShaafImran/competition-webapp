@@ -1,3 +1,6 @@
+import Papa from "papaparse"
+import { createAdjudicator } from "./write" 
+// Assuming you have this function
 export const validateAdjudicatorInput = (data) => {
   const errors = {}
 
@@ -5,12 +8,14 @@ export const validateAdjudicatorInput = (data) => {
     errors.name = "Adjudicator name is required"
   }
 
-  if (!data.level) {
-    errors.level = "Experience level is required"
+  if (!data.role) {
+    errors.role = "Role is required"
   }
 
-  // Email is optional but should be valid if provided
-  if (data.email && !/^\S+@\S+\.\S+$/.test(data.email)) {
+  // Email is required and should be valid
+  if (!data.email) {
+    errors.email = "Email is required"
+  } else if (!/^\S+@\S+\.\S+$/.test(data.email)) {
     errors.email = "Valid email is required"
   }
 
@@ -26,10 +31,10 @@ export const suggestAdjudicators = (matches, adjudicators, previousAssignments =
 
   const suggestions = {}
 
-  // Sort adjudicators by experience level
+  // Sort adjudicators by role priority (example)
+  const roleOrder = { chair: 3, panelist: 2, trainee: 1 }
   const sortedAdjudicators = [...adjudicators].sort((a, b) => {
-    const levelOrder = { expert: 3, experienced: 2, novice: 1 }
-    return levelOrder[b.level] - levelOrder[a.level]
+    return (roleOrder[b.role] || 0) - (roleOrder[a.role] || 0)
   })
 
   // For each match, suggest adjudicators
@@ -62,4 +67,47 @@ export const suggestAdjudicators = (matches, adjudicators, previousAssignments =
   })
 
   return suggestions
+}
+
+export const importAdjudicatorsFromCSV = (csvFile, tournamentId) => {
+  return new Promise((resolve, reject) => {
+    Papa.parse(csvFile, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const createdAdjudicators = []
+
+          for (const row of results.data) {
+            // Normalize and trim fields
+            const adjudicatorData = {
+              name: row.name?.trim(),
+              email: row.email?.trim().toLowerCase(),
+              role: row.role?.trim().toLowerCase(),
+              tournament_id: tournamentId,
+            }
+
+            // Validate each row
+            const { isValid, errors } = validateAdjudicatorInput(adjudicatorData)
+            if (!isValid) {
+              throw new Error(
+                `Validation failed for adjudicator "${adjudicatorData.name || "Unknown"}": ${JSON.stringify(errors)}`
+              )
+            }
+
+            // Insert adjudicator (using your existing createAdjudicator function)
+            const created = await createAdjudicator(adjudicatorData)
+            createdAdjudicators.push(created)
+          }
+
+          resolve(createdAdjudicators)
+        } catch (error) {
+          reject(error)
+        }
+      },
+      error: (error) => {
+        reject(error)
+      },
+    })
+  })
 }

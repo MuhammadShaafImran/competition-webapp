@@ -162,8 +162,10 @@ const CreateTournament = () => {
       console.log("Creating tournament with data:", tournamentData)
       const newTournament = await createTournament(tournamentData)
       
-      // Navigate to adjudicator assignment page
-      navigate(`/tournaments/${newTournament.id}/adjudicators`)
+      // Navigate to adjudicator assignment page with a clear indication that this is the required next step
+      navigate(`/tournaments/${newTournament.id}/adjudicators`, { 
+        state: { isNewTournament: true, message: "Please add adjudicators before proceeding to add teams." } 
+      })
       
     } catch (err) {
       console.error("Error creating tournament:", err)

@@ -7,7 +7,7 @@ export const getAdjudicatorsByTournament = async (tournamentId) => {
       id,
       name,
       email,
-      level,
+      role,
       tournament_id
     `)
     .eq("tournament_id", tournamentId)

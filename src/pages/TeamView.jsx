@@ -49,20 +49,47 @@ const TeamView = () => {
     )
   }
 
+  // Calculate role from match_roles data
+  const getTeamRole = (matchRole) => {
+    if (matchRole.og === 1) return 'og'
+    if (matchRole.oo === 1) return 'oo'
+    if (matchRole.cg === 1) return 'cg'
+    if (matchRole.co === 1) return 'co'
+    return 'Unknown'
+  }
+
+  // Calculate rank from role
+  const getRankFromRole = (matchRole) => {
+    if (matchRole.og === 1) return 1
+    if (matchRole.oo === 1) return 2
+    if (matchRole.cg === 1) return 3
+    if (matchRole.co === 1) return 4
+    return null
+  }
+
   // Group matches by round
   const matchesByRound = {}
-  team.match_teams.forEach((matchTeam) => {
-    const roundNumber = matchTeam.match.round_number
+  team.match_roles.forEach((matchRole) => {
+    const roundNumber = matchRole.match?.round_number
     if (!matchesByRound[roundNumber]) {
       matchesByRound[roundNumber] = []
     }
-    matchesByRound[roundNumber].push(matchTeam)
+    matchesByRound[roundNumber].push({
+      ...matchRole,
+      role: getTeamRole(matchRole),
+      rank: getRankFromRole(matchRole)
+    })
   })
 
   // Calculate total points
-  const totalTeamPoints = team.match_teams.reduce((sum, mt) => sum + (mt.team_points || 0), 0)
+  const totalTeamPoints = team.match_roles.reduce((sum, mr) => {
+    if (mr.og === 1) return sum + 3
+    if (mr.oo === 1) return sum + 2
+    if (mr.cg === 1) return sum + 1
+    return sum
+  }, 0)
 
-  const totalSpeakerPoints = team.match_teams.reduce((sum, mt) => sum + (mt.scaled_points || 0), 0)
+  const totalSpeakerPoints = team.match_roles.reduce((sum, mr) => sum + (mr.scaled_points || 0), 0)
 
   return (
     <div className="min-h-screen bg-gray-100 py-8">
@@ -120,35 +147,35 @@ const TeamView = () => {
                       </h3>
 
                       <div className="space-y-3">
-                        {matches.map((matchTeam) => (
-                          <div key={matchTeam.id} className="p-3 bg-gray-50 rounded">
+                        {matches.map((matchRole) => (
+                          <div key={matchRole.id} className="p-3 bg-gray-50 rounded">
                             <div className="flex justify-between items-center mb-2">
-                              <span className="font-medium">Role: {matchTeam.role}</span>
-                              {matchTeam.rank && (
+                              <span className="font-medium">Role: {matchRole.role}</span>
+                              {matchRole.rank && (
                                 <span
                                   className={`text-sm px-2 py-1 rounded ${
-                                    matchTeam.rank === 1
+                                    matchRole.rank === 1
                                       ? "bg-green-100 text-green-800"
-                                      : matchTeam.rank === 2
+                                      : matchRole.rank === 2
                                         ? "bg-blue-100 text-blue-800"
-                                        : matchTeam.rank === 3
+                                        : matchRole.rank === 3
                                           ? "bg-yellow-100 text-yellow-800"
                                           : "bg-red-100 text-red-800"
                                   }`}
                                 >
-                                  Rank: {matchTeam.rank}
+                                  Rank: {matchRole.rank}
                                 </span>
                               )}
                             </div>
 
-                            {matchTeam.team_points !== null && (
+                            {matchRole.team_points !== null && (
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 <div>
-                                  <span className="text-gray-600">Team Points:</span> {matchTeam.team_points}
+                                  <span className="text-gray-600">Team Points:</span> {matchRole.team_points}
                                 </div>
                                 <div>
                                   <span className="text-gray-600">Speaker Points:</span>{" "}
-                                  {matchTeam.scaled_points?.toFixed(2)}
+                                  {matchRole.scaled_points?.toFixed(2)}
                                 </div>
                               </div>
                             )}

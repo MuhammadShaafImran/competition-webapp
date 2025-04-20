@@ -19,6 +19,8 @@ import AdjudicatorAssignment from "../pages/AdjudicatorAssignment"
 import TeamTracking from "../pages/TeamTracking"
 import ErrorPage from "../pages/ErrorPage"
 import TeamView from "../pages/TeamView"
+import MatchDetails from "../pages/MatchDetails"
+import AssignAdjudicator from "../pages/AssignAdjudicator"
 
 // Route definitions for better organization
 const ROUTES = {
@@ -42,6 +44,8 @@ const ROUTES = {
     { path: "/tournaments/:id/rounds/:round/adjudicators", element: <AdjudicatorAssignment /> },
     { path: "/tournaments/:id/adjudicators", element: <AdjudicatorAssignment /> },
     { path: "/tournaments/:id/tracking", element: <TeamTracking /> },
+    { path: "/tournaments/:id/rounds/:round/matches/:matchId", element: <MatchDetails /> },
+    { path: "/tournaments/:id/rounds/:round/matches/:matchId/assign", element: <AssignAdjudicator /> },
   ]
 }
 

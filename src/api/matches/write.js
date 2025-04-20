@@ -1,73 +1,134 @@
 import supabase from "../supabaseClient"
-import { updateRoleTracker } from "./service"
 
-export const createMatch = async ({ tournament_id, round_number, is_break, is_closing, status, teams }) => {
-  // First create the match
+export const createMatch = async ({ 
+  round_id, 
+  tournament_id, 
+  team_1_id, 
+  team_2_id, 
+  team_3_id, 
+  team_4_id,
+  is_break_round = false
+}) => {
+  // Create the match
   const { data: match, error: matchError } = await supabase
     .from("matches")
-    .insert([
-      {
-        tournament_id,
-        round_number,
-        is_break,
-        is_closing,
-        status,
-        swing_team_used: false,
-      },
-    ])
+    .insert([{
+      round_id,
+      tournament_id,
+      team_1_id,
+      team_2_id,
+      team_3_id,
+      team_4_id,
+      is_completed: false,
+      is_break_round,
+    }])
     .select()
     .single()
 
   if (matchError) throw matchError
+  console.log("Match created:", match)
 
-  // Then create the match_teams entries
-  const matchTeams = teams.map((team) => ({
-    match_id: match.id,
-    team_id: team.id,
-    role: team.role,
-    team_points: null,
-    scaled_points: null,
-    raw_points: null,
-    rank: null,
-  }))
+  // Assign roles to teams
+  const roleAssignments = [
+    { team_id: team_1_id, og: 1, oo: 0, cg: 0, co: 0 }, // Team 1 is OG
+    { team_id: team_2_id, og: 0, oo: 1, cg: 0, co: 0 }, // Team 2 is OO
+    { team_id: team_3_id, og: 0, oo: 0, cg: 1, co: 0 }, // Team 3 is CG
+    { team_id: team_4_id, og: 0, oo: 0, cg: 0, co: 1 }  // Team 4 is CO
+  ]
 
-  const { error: teamsError } = await supabase.from("match_teams").insert(matchTeams)
+  // Insert role assignments
+  const { error: roleError } = await supabase
+    .from("match_roles")
+    .insert(roleAssignments.map(role => ({
+      ...role,
+      match_id: match.id
+    })))
 
-  if (teamsError) throw teamsError
-
-  // Update role tracker for each team
-  for (const team of teams) {
-    await updateRoleTracker(team.id, team.role)
+  if (roleError) {
+    console.error("Error assigning roles:", roleError)
+    throw roleError
   }
 
   return match
 }
 
 export const submitMatchResults = async (matchId, results) => {
-  // Update each team's results in the match
-  const updates = results.map((result) => ({
-    id: result.match_team_id,
-    team_points: result.team_points,
-    scaled_points: result.scaled_points,
-    raw_points: result.raw_points,
-    rank: result.rank,
-  }))
-
-  const { error } = await supabase.from("match_teams").upsert(updates)
-
-  if (error) throw error
-
-  // Update match status
-  const { error: matchError } = await supabase.from("matches").update({ status: "completed" }).eq("id", matchId)
-
+  const { data: match, error: matchError } = await supabase
+    .from("matches")
+    .select("tournament_id")
+    .eq("id", matchId)
+    .single()
+    
   if (matchError) throw matchError
+
+  // First, clear any existing results
+  await supabase.from("match_roles").delete().eq("match_id", matchId)
+  await supabase.from("speaker_points").delete().eq("match_id", matchId)
+
+  // Convert roles to new format
+  const rolePromises = results.map(result => {
+    const roleData = {
+      match_id: matchId,
+      team_id: result.team_id,
+      og: result.role === 'og' ? 1 : 0,
+      oo: result.role === 'oo' ? 1 : 0,
+      cg: result.role === 'cg' ? 1 : 0,
+      co: result.role === 'co' ? 1 : 0
+    }
+    return supabase.from("match_roles").insert(roleData)
+  })
+  
+  // Insert speaker points
+  const pointsPromises = results.map(result => 
+    supabase.from("speaker_points").insert({
+      match_id: matchId,
+      tournament_id: match.tournament_id,
+      team_id: result.team_id,
+      member_1_points: result.member_1_points,
+      member_2_points: result.member_2_points
+    })
+  )
+  
+  // Wait for all inserts to complete
+  await Promise.all([...rolePromises, ...pointsPromises])
+  
+  // Mark match as completed
+  const { error: updateError } = await supabase
+    .from("matches")
+    .update({ is_completed: true })
+    .eq("id", matchId)
+
+  if (updateError) throw updateError
+  
+  // Update standings for each team
+  for (const result of results) {
+    await supabase.rpc('submit_match_results', {
+      p_match_id: matchId,
+      p_team_roles: results.map(r => ({ 
+        team_id: r.team_id, 
+        og: r.role === 'og' ? 1 : 0,
+        oo: r.role === 'oo' ? 1 : 0,
+        cg: r.role === 'cg' ? 1 : 0,
+        co: r.role === 'co' ? 1 : 0
+      })),
+      p_speaker_points: results.map(r => ({ 
+        team_id: r.team_id, 
+        member_1_points: r.member_1_points, 
+        member_2_points: r.member_2_points 
+      })),
+      p_rank_order: results.map(r => r.team_id)
+    })
+  }
 
   return { success: true }
 }
 
 export const assignAdjudicators = async (matchId, adjudicatorIds) => {
   // First remove any existing adjudicators
-  const { error: deleteError } = await supabase.from("match_adjudicators").delete().eq("match_id", matchId)
+  const { error: deleteError } = await supabase
+    .from("match_adjudicators")
+    .delete()
+    .eq("match_id", matchId)
 
   if (deleteError) throw deleteError
 
@@ -77,7 +138,9 @@ export const assignAdjudicators = async (matchId, adjudicatorIds) => {
     adjudicator_id: id,
   }))
 
-  const { error } = await supabase.from("match_adjudicators").insert(adjudicators)
+  const { error } = await supabase
+    .from("match_adjudicators")
+    .insert(adjudicators)
 
   if (error) throw error
 
